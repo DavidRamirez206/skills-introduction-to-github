@@ -2401,8 +2401,1078 @@ public class EjemploGSON {
 
 
 <details>
-  <summary>Otros apuntes</summary>
+  <summary>Regalito</summary>
+
   
+# Compunet — Implementación Integrada (JDBC + Sockets TCP + ThreadPool + Semáforos + GSON)
+
+**Origen:** Este documento se creó tomando como referencia tu archivo `Compunet.md`. fileciteturn0file0
+
+**Objetivo:** Proporcionar una implementación educativa y reproducible en Java que **integre** los 5 puntos solicitados:
+1. JDBC (conexión entre Java y bases de datos relacionales)
+2. Uso de sockets TCP
+3. Uso de Thread Pools y sincronización
+4. Uso de semáforos
+5. Serialización JSON con GSON
+
+> El código está organizado por paquetes y pensado para ser fácil de leer, ejecutar y adaptar.
+
+---
+
+## Estructura sugerida del proyecto (maven / gradle)
+```
+src/
+  main/
+    java/
+      db/ConnectionManager.java
+      model/Task.java
+      model/TaskStage.java
+      dao/TaskDaoDB.java
+      dto/Request.java
+      dto/Response.java
+      services/TaskServices.java
+      server/ClientHandler.java
+      server/ManagerServer.java
+      client/SimpleClient.java
+resources/
+pom.xml (o build.gradle)
+```
+
+### Dependencias principales (Maven)
+```xml
+<!-- añadir en pom.xml -->
+<dependencies>
+  <dependency>
+    <groupId>org.postgresql</groupId>
+    <artifactId>postgresql</artifactId>
+    <version>42.6.0</version>
+  </dependency>
+
+  <dependency>
+    <groupId>com.google.code.gson</groupId>
+    <artifactId>gson</artifactId>
+    <version>2.10.1</version>
+  </dependency>
+</dependencies>
+```
+
+---
+
+## 1) JDBC: `db/ConnectionManager.java`
+
+```java
+package db;
+
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.SQLException;
+
+/**
+ * Simple ConnectionManager for PostgreSQL using JDBC.
+ * Use environment variables or constructor to configure.
+ */
+public class ConnectionManager {
+    private final String url;
+    private final String user;
+    private final String pass;
+
+    public ConnectionManager(String url, String user, String pass) {
+        this.url = url;
+        this.user = user;
+        this.pass = pass;
+    }
+
+    public Connection getConnection() throws SQLException {
+        // Driver registration is automatic in modern JDBC; keep Class.forName if older JDKs
+        return DriverManager.getConnection(url, user, pass);
+    }
+}
+```
+
+**Explicación corta:** `ConnectionManager` centraliza la creación de `Connection`. En producción usarías un pool (HikariCP) para evitar sobrecarga por conexiones repetidas.
+
+---
+
+## 2) Modelos y DTOs (usados para GSON)
+
+`model/Task.java`
+
+```java
+package model;
+
+public class Task {
+    private Integer id;
+    private String title;
+    private String description;
+    private String dueDate;
+    private String priority;
+    private TaskStage stage;
+
+    // constructor vacío, getters y setters
+    public Task() {}
+    // getters & setters ...
+}
+```
+
+`model/TaskStage.java`
+
+```java
+package model;
+
+public class TaskStage {
+    private Integer id;
+    private String name;
+    private String description;
+    // getters & setters ...
+}
+```
+
+`dto/Request.java` (peticiones entrantes por TCP, en JSON)
+
+```java
+package dto;
+
+public class Request {
+    private String command;
+    private String payload; // JSON string adicional opcional
+
+    public Request() {}
+    public String getCommand() { return command; }
+    public void setCommand(String command) { this.command = command; }
+    public String getPayload() { return payload; }
+    public void setPayload(String payload) { this.payload = payload; }
+}
+```
+
+`dto/Response.java`
+
+```java
+package dto;
+
+public class Response {
+    private boolean ok;
+    private String message;
+    private Object data; // serializable por GSON
+
+    public Response() {}
+    // getters/setters
+}
+```
+
+---
+
+## 3) DAO con JDBC: `dao/TaskDaoDB.java`
+
+```java
+package dao;
+
+import model.Task;
+import model.TaskStage;
+import db.ConnectionManager;
+
+import java.sql.*;
+import java.util.ArrayList;
+import java.util.List;
+
+public class TaskDaoDB {
+    private final ConnectionManager cm;
+
+    public TaskDaoDB(ConnectionManager cm){
+        this.cm = cm;
+    }
+
+    public List<Task> findAll() throws SQLException {
+        String q = "SELECT t.id, t.title, t.description, t.due_date, t.priority, t.stage_id, s.name as stage_name " +
+                   "FROM task t LEFT JOIN task_stage s ON t.stage_id = s.id";
+        List<Task> list = new ArrayList<>();
+        try (Connection c = cm.getConnection();
+             PreparedStatement ps = c.prepareStatement(q);
+             ResultSet rs = ps.executeQuery()) {
+            while (rs.next()){
+                Task t = new Task();
+                t.setId(rs.getInt("id"));
+                t.setTitle(rs.getString("title"));
+                t.setDescription(rs.getString("description"));
+                t.setDueDate(rs.getString("due_date"));
+                t.setPriority(rs.getString("priority"));
+                TaskStage stage = new TaskStage();
+                stage.setId(rs.getInt("stage_id"));
+                stage.setName(rs.getString("stage_name"));
+                t.setStage(stage);
+                list.add(t);
+            }
+        }
+        return list;
+    }
+
+    public void save(Task task) throws SQLException {
+        String q = "INSERT INTO task (title, description, due_date, priority, stage_id) VALUES (?, ?, ?, ?, ?)";
+        try (Connection c = cm.getConnection();
+             PreparedStatement ps = c.prepareStatement(q, Statement.RETURN_GENERATED_KEYS)) {
+            ps.setString(1, task.getTitle());
+            ps.setString(2, task.getDescription());
+            ps.setString(3, task.getDueDate());
+            ps.setString(4, task.getPriority());
+            ps.setObject(5, task.getStage() != null ? task.getStage().getId() : null);
+            ps.executeUpdate();
+            try (ResultSet gk = ps.getGeneratedKeys()){
+                if (gk.next()) task.setId(gk.getInt(1));
+            }
+        }
+    }
+}
+```
+
+**Notas:** usar `PreparedStatement` para evitar inyección. Manejar transacciones si haces varias operaciones.
+
+---
+
+## 4) Serialización JSON (GSON)
+
+```java
+import com.google.gson.Gson;
+Gson gson = new Gson();
+
+// Objeto a JSON
+String json = gson.toJson(someObject);
+
+// JSON a objeto
+Task t = gson.fromJson(json, Task.class);
+```
+
+GSON hace coincidir campos por nombre; usa `transient` para excluir campos si necesario.
+
+---
+
+## 5) Sockets TCP + ThreadPool + Semáforos (servidor multi-hilo)
+
+`server/ClientHandler.java`
+
+```java
+package server;
+
+import java.io.*;
+import java.net.Socket;
+import com.google.gson.Gson;
+import dto.Request;
+import dto.Response;
+import services.TaskServices;
+
+/**
+ * Cada ClientHandler atiende a un cliente en su propio hilo (ejecutado por ExecutorService).
+ * Usa TaskServices para operar con la base de datos. Para limitar accesos concurrentes a DB
+ * se utiliza un Semaphore en TaskServices (o a nivel de ManagerServer).
+ */
+public class ClientHandler implements Runnable {
+    private final Socket socket;
+    private final TaskServices services;
+    private final Gson gson = new Gson();
+
+    public ClientHandler(Socket socket, TaskServices services) {
+        this.socket = socket;
+        this.services = services;
+    }
+
+    @Override
+    public void run() {
+        try (
+            BufferedReader br = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+            BufferedWriter bw = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream()))
+        ) {
+            String line;
+            while ((line = br.readLine()) != null) {
+                Request req = gson.fromJson(line, Request.class);
+                Response resp = new Response();
+                try {
+                    if ("GET_TASKS".equals(req.getCommand())) {
+                        resp.setOk(true);
+                        resp.setData(services.getTasks()); // lista de Task serializable por GSON
+                    } else if ("CREATE_TASK".equals(req.getCommand())) {
+                        // payload contiene JSON con Task
+                        Task newTask = gson.fromJson(req.getPayload(), model.Task.class);
+                        services.createTask(newTask);
+                        resp.setOk(true);
+                        resp.setMessage("Task created");
+                    } else {
+                        resp.setOk(false);
+                        resp.setMessage("Command not supported");
+                    }
+                } catch (Exception ex) {
+                    resp.setOk(false);
+                    resp.setMessage("Server error: " + ex.getMessage());
+                }
+                String out = gson.toJson(resp);
+                bw.write(out + "\n");
+                bw.flush();
+            }
+        } catch (IOException e) {
+            // cliente desconectado o error I/O
+        } finally {
+            try { socket.close(); } catch (IOException ignored) {}
+        }
+    }
+}
+```
+
+`server/ManagerServer.java`
+
+```java
+package server;
+
+import java.net.ServerSocket;
+import java.net.Socket;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import services.TaskServices;
+
+/**
+ * ManagerServer: acepta clientes con ServerSocket, delega la atención a un ThreadPool.
+ * Además, comparte la instancia de TaskServices (que contiene un Semaphore para limitar
+ * concurrencia sobre la base de datos).
+ */
+public class ManagerServer {
+    private final int port;
+    private final ExecutorService pool;
+    private final TaskServices services;
+
+    public ManagerServer(int port, int poolSize, TaskServices services) {
+        this.port = port;
+        this.pool = Executors.newFixedThreadPool(poolSize);
+        this.services = services;
+    }
+
+    public void start() throws Exception {
+        try (ServerSocket server = new ServerSocket(port)) {
+            System.out.println("Server listening on " + port);
+            while (true) {
+                Socket client = server.accept();
+                System.out.println("Accepted from " + client.getInetAddress());
+                pool.execute(new ClientHandler(client, services));
+            }
+        } finally {
+            pool.shutdown();
+        }
+    }
+
+    public static void main(String[] args) throws Exception {
+        // Configuración de ejemplo:
+        // DB url en formato jdbc:postgresql://host:5432/db
+        services.TaskServices services = new services.TaskServices(
+            new db.ConnectionManager("jdbc:postgresql://localhost:5432/compunet", "user", "pass")
+        );
+        new ManagerServer(5000, 8, services).start();
+    }
+}
+```
+
+**Puntos clave:** El `ExecutorService` permite manejar N clientes en paralelo sin crear hilos continuamente. `TaskServices` debe contener sincronización/semáforos para proteger la BD o recursos limitados.
+
+---
+
+## 6) Servicios y Semáforos: `services/TaskServices.java`
+
+```java
+package services;
+
+import dao.TaskDaoDB;
+import db.ConnectionManager;
+import model.Task;
+
+import java.util.List;
+import java.util.concurrent.Semaphore;
+
+/**
+ * TaskServices gobierna el acceso a DAO usando un Semaphore para limitar
+ * cuántas operaciones concurrentes de BD se permiten.
+ */
+public class TaskServices {
+    private final TaskDaoDB dao;
+    // Limitar p.ej. 5 conexiones simultáneas a la base de datos
+    private final Semaphore dbSemaphore = new Semaphore(5);
+
+    public TaskServices(ConnectionManager cm) {
+        this.dao = new TaskDaoDB(cm);
+    }
+
+    // interfaz por simplicidad
+    public List<Task> getTasks() throws Exception {
+        dbSemaphore.acquire();
+        try {
+            return dao.findAll();
+        } finally {
+            dbSemaphore.release();
+        }
+    }
+
+    public void createTask(Task t) throws Exception {
+        dbSemaphore.acquire();
+        try {
+            dao.save(t);
+        } finally {
+            dbSemaphore.release();
+        }
+    }
+}
+```
+
+**Explicación:** `dbSemaphore` controla cuántas operaciones a la base de datos se ejecutan en paralelo (útil cuando la BD o la red tiene límite de concurrencia).
+
+---
+
+## 7) Cliente simple que pide tareas: `client/SimpleClient.java`
+
+```java
+package client;
+
+import java.io.*;
+import java.net.Socket;
+import com.google.gson.Gson;
+import dto.Request;
+import dto.Response;
+
+public class SimpleClient {
+    public static void main(String[] args) throws Exception {
+        try (Socket s = new Socket("127.0.0.1", 5000);
+             BufferedWriter bw = new BufferedWriter(new OutputStreamWriter(s.getOutputStream()));
+             BufferedReader br = new BufferedReader(new InputStreamReader(s.getInputStream()))) {
+
+            Gson gson = new Gson();
+            Request r = new Request();
+            r.setCommand("GET_TASKS");
+            bw.write(gson.toJson(r) + "\n");
+            bw.flush();
+
+            String line = br.readLine();
+            Response resp = gson.fromJson(line, Response.class);
+            System.out.println("Server response: " + gson.toJson(resp));
+        }
+    }
+}
+```
+
+---
+
+## 8) SQL (esquema mínimo)
+```sql
+CREATE TABLE task_stage (
+  id SERIAL PRIMARY KEY,
+  name VARCHAR(100),
+  description TEXT
+);
+
+CREATE TABLE task (
+  id SERIAL PRIMARY KEY,
+  title VARCHAR(255),
+  description TEXT,
+  due_date VARCHAR(50),
+  priority VARCHAR(20),
+  stage_id INTEGER REFERENCES task_stage(id)
+);
+```
+
+---
+
+## 9) Sincronización adicional y `synchronized`
+- Usa `synchronized` para proteger estructuras en memoria (por ejemplo: un `Map` compartido por hilos que guarda sesiones).
+- Usa `volatile` para banderas leídas por varios hilos.
+- Evita bloqueos largos dentro de secciones críticas.
+
+---
+
+## 10) Consejos de despliegue y pruebas
+1. Configura la BD y crea tablas antes de ejecutar.
+2. Ajusta el tamaño del thread pool según CPU/IO (por ejemplo `poolSize = cores * 2` como regla base).
+3. Monitorea latencias de BD: si la BD se satura, reduce el semáforo o mejora el pool de conexiones.
+4. En producción usa connection-pool (HikariCP), y considera TLS para sockets.
+
+---
+
+## 11) Resumen conceptual (rápido)
+
+- **JDBC**: API para ejecutar SQL desde Java; usa `PreparedStatement` y cierra recursos.
+- **Sockets TCP**: `ServerSocket.accept()` crea `Socket`; cliente conecta con `new Socket(host, port)`.
+- **ThreadPool**: `ExecutorService` para ejecutar tareas concurrentes y limitar creación de hilos.
+- **Semáforos**: controlan cuántos hilos acceden a un recurso; `new Semaphore(n)`, `acquire()`, `release()`.
+- **GSON**: serializa/deserializa JSON con `toJson()` y `fromJson()`.
+
+---
+
+## 12) ¿Qué entrego en este archivo?
+- Código de ejemplo comentado que integra los 5 puntos.
+- Esquema SQL y recomendaciones para producción.
+- Instrucciones para compilar y ejecutar.
+
+---
+
+## Licencia educativa
+Puedes reutilizar y adaptar este material para aprendizaje o proyecto personal. No incluyo dependencias propietarias.
+
+
+
+
+</details>
+
+
+<details>
+  <summary>Regalito 2</summary>
+  
+
+# Compunet — Resumen: Los 5 puntos clave (lista descargable)
+
+Este archivo contiene explicaciones concisas y ejemplos mínimos para cada uno de los **5 puntos** solicitados.
+
+1) **JDBC (Conexión Java ↔ BD relacional)**
+- Objetivo: ejecutar consultas SQL desde Java y persistir datos.
+- Pasos:
+  - Registrar driver (opcional en JDK reciente).
+  - Crear `Connection` con `DriverManager.getConnection(url,user,pass)`.
+  - Usar `PreparedStatement` y `ResultSet`.
+  - Cerrar recursos (try-with-resources).
+- Mini-ejemplo:
+```java
+try (Connection c = DriverManager.getConnection(url,user,pass);
+     PreparedStatement ps = c.prepareStatement("SELECT * FROM task");
+     ResultSet rs = ps.executeQuery()) {
+    while (rs.next()) { System.out.println(rs.getString("title")); }
+}
+```
+
+2) **Sockets TCP**
+- Servidor: `ServerSocket server = new ServerSocket(port); Socket client = server.accept();`
+- Cliente: `Socket s = new Socket(host, port);`
+- Envío/Recepción: `BufferedReader`/`BufferedWriter` con `readLine()` / `write(...+"\n")`.
+- Mini-ejemplo cliente:
+```java
+Socket s = new Socket("localhost", 5000);
+BufferedWriter bw = new BufferedWriter(new OutputStreamWriter(s.getOutputStream()));
+bw.write("hola\n"); bw.flush();
+```
+
+3) **Thread Pools y sincronización**
+- `ExecutorService pool = Executors.newFixedThreadPool(n);`
+- `pool.execute(new RunnableTask())`
+- `synchronized` protege métodos o bloques.
+- Mini-ejemplo:
+```java
+ExecutorService pool = Executors.newFixedThreadPool(4);
+pool.execute(() -> { synchronized(obj) { /* sección crítica */ } });
+pool.shutdown();
+```
+
+4) **Semáforos**
+- Controlan cuántos hilos pueden entrar simultáneamente.
+- `Semaphore sem = new Semaphore(permits); sem.acquire(); ... sem.release();`
+- Usos: limitar accesos a DB, implementar turnos, limitar recursos físicos.
+- Mini-ejemplo:
+```java
+Semaphore sem = new Semaphore(1); // mutex
+sem.acquire();
+try { /* recurso */ } finally { sem.release(); }
+```
+
+5) **Serialización JSON con GSON**
+- Convertir objetos Java ↔ JSON: `Gson gson = new Gson(); gson.toJson(obj); gson.fromJson(json, Class.class);`
+- Útil para enviar objetos por sockets o almacenar configuraciones.
+- Mini-ejemplo:
+```java
+Gson gson = new Gson();
+String json = gson.toJson(myTask);
+Task t = gson.fromJson(json, Task.class);
+```
+
+---
+
+## Recomendación rápida para unir todo
+- Servidor TCP con `ExecutorService`.
+- `ClientHandler` parsea JSON (GSON) en `Request`.
+- `TaskServices` ejecuta operaciones con `TaskDaoDB` (JDBC) controladas por `Semaphore`.
+- Cliente envía comandos JSON y recibe `Response` JSON.
+
+
+
+</details>
+
+
+<details>
+  <summary>Regalito 4</summary>
+  
+# Compunet — Implementación Cliente-Servidor (TCP) Integrada
+**Basado en tu material original.** Fragmentos y ejemplos referenciados del archivo que me enviaste. fileciteturn2file0
+
+--- 
+## Objetivo
+Crear una **implementación cliente-servidor TCP en Java** que integre:
+1. JDBC (conexión a BD relacionales)
+2. Sockets TCP
+3. Thread pool (ExecutorService) y sincronización (`synchronized`)
+4. Semáforos (`Semaphore`)
+5. Serialización JSON usando **GSON**
+
+Además se entrega:
+- Código ejemplo listo para copiar/pegar y adaptar.
+- Explicaciones paso a paso y recomendaciones de despliegue.
+- Esquema SQL mínimo.
+
+---
+
+## Estructura de proyecto (sugerida)
+```
+src/
+  main/
+    java/
+      db/ConnectionManager.java
+      dao/TaskDaoDB.java
+      model/Task.java
+      dto/Request.java
+      dto/Response.java
+      services/TaskServices.java
+      server/ClientHandler.java
+      server/ManagerServer.java
+      client/SimpleClient.java
+resources/
+pom.xml
+```
+
+Dependencias Maven (fragmento para `pom.xml`):
+```xml
+<dependencies>
+  <dependency>
+    <groupId>org.postgresql</groupId>
+    <artifactId>postgresql</artifactId>
+    <version>42.6.0</version>
+  </dependency>
+  <dependency>
+    <groupId>com.google.code.gson</groupId>
+    <artifactId>gson</artifactId>
+    <version>2.10.1</version>
+  </dependency>
+</dependencies>
+```
+
+---
+
+## SQL — esquema mínimo
+```sql
+CREATE TABLE task_stage (
+  id SERIAL PRIMARY KEY,
+  name VARCHAR(100),
+  description TEXT
+);
+
+CREATE TABLE task (
+  id SERIAL PRIMARY KEY,
+  title VARCHAR(255),
+  description TEXT,
+  due_date VARCHAR(50),
+  priority VARCHAR(20),
+  stage_id INTEGER REFERENCES task_stage(id)
+);
+```
+
+---
+
+## 1) JDBC — `db/ConnectionManager.java`
+```java
+package db;
+
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.SQLException;
+
+/**
+ * ConnectionManager simple. En producción usar pool (HikariCP).
+ */
+public class ConnectionManager {
+    private final String url;
+    private final String user;
+    private final String pass;
+
+    public ConnectionManager(String url, String user, String pass) {
+        this.url = url;
+        this.user = user;
+        this.pass = pass;
+    }
+
+    public Connection getConnection() throws SQLException {
+        return DriverManager.getConnection(url, user, pass);
+    }
+}
+```
+
+**Concepto:** centraliza la creación de `Connection`. Usar `try-with-resources` al ejecutar consultas.
+
+---
+
+## 2) Modelos y DTOs (para GSON)
+
+`model/Task.java`
+```java
+package model;
+
+public class Task {
+    private Integer id;
+    private String title;
+    private String description;
+    private String dueDate;
+    private String priority;
+    // getters, setters, constructor vacío
+}
+```
+
+`dto/Request.java`
+```java
+package dto;
+public class Request {
+    private String command; // e.g., "GET_TASKS", "CREATE_TASK"
+    private String payload; // JSON payload (p.ej. Task JSON)
+    public Request(){}
+    // getters/setters...
+}
+```
+
+`dto/Response.java`
+```java
+package dto;
+public class Response {
+    private boolean ok;
+    private String message;
+    private Object data;
+    public Response(){}
+    // getters/setters...
+}
+```
+
+---
+
+## 3) DAO con JDBC — `dao/TaskDaoDB.java`
+```java
+package dao;
+
+import db.ConnectionManager;
+import model.Task;
+import java.sql.*;
+import java.util.ArrayList;
+import java.util.List;
+
+public class TaskDaoDB {
+    private final ConnectionManager cm;
+
+    public TaskDaoDB(ConnectionManager cm){
+        this.cm = cm;
+    }
+
+    public List<Task> findAll() throws SQLException {
+        String q = "SELECT t.id, t.title, t.description, t.due_date, t.priority, t.stage_id FROM task t";
+        List<Task> list = new ArrayList<>();
+        try (Connection c = cm.getConnection();
+             PreparedStatement ps = c.prepareStatement(q);
+             ResultSet rs = ps.executeQuery()) {
+            while (rs.next()){
+                Task t = new Task();
+                t.setId(rs.getInt("id"));
+                t.setTitle(rs.getString("title"));
+                t.setDescription(rs.getString("description"));
+                t.setDueDate(rs.getString("due_date"));
+                t.setPriority(rs.getString("priority"));
+                list.add(t);
+            }
+        }
+        return list;
+    }
+
+    public void save(Task task) throws SQLException {
+        String q = "INSERT INTO task (title, description, due_date, priority, stage_id) VALUES (?, ?, ?, ?, ?)";
+        try (Connection c = cm.getConnection();
+             PreparedStatement ps = c.prepareStatement(q, Statement.RETURN_GENERATED_KEYS)) {
+            ps.setString(1, task.getTitle());
+            ps.setString(2, task.getDescription());
+            ps.setString(3, task.getDueDate());
+            ps.setString(4, task.getPriority());
+            ps.setObject(5, null);
+            ps.executeUpdate();
+            try (ResultSet gk = ps.getGeneratedKeys()){
+                if (gk.next()) task.setId(gk.getInt(1));
+            }
+        }
+    }
+}
+```
+
+**Nota:** usa `PreparedStatement` para evitar inyección. Maneja transacciones si hay varias operaciones dependientes.
+
+---
+
+## 4) Servicios + Semáforos — `services/TaskServices.java`
+```java
+package services;
+
+import dao.TaskDaoDB;
+import db.ConnectionManager;
+import model.Task;
+
+import java.util.List;
+import java.util.concurrent.Semaphore;
+
+public class TaskServices {
+    private final TaskDaoDB dao;
+    private final Semaphore dbSemaphore;
+
+    public TaskServices(ConnectionManager cm, int dbConcurrencyLimit) {
+        this.dao = new TaskDaoDB(cm);
+        this.dbSemaphore = new Semaphore(dbConcurrencyLimit);
+    }
+
+    public List<Task> getTasks() throws Exception {
+        dbSemaphore.acquire();
+        try {
+            return dao.findAll();
+        } finally {
+            dbSemaphore.release();
+        }
+    }
+
+    public void createTask(Task t) throws Exception {
+        dbSemaphore.acquire();
+        try {
+            dao.save(t);
+        } finally {
+            dbSemaphore.release();
+        }
+    }
+}
+```
+
+**Explicación:** `Semaphore` limita cuántas operaciones concurrentes hacia la BD se permiten. Útil si la BD no soporta muchas conexiones simultáneas.
+
+---
+
+## 5) Sockets TCP + ThreadPool + sincronización
+
+### `server/ClientHandler.java`
+```java
+package server;
+
+import dto.Request;
+import dto.Response;
+import com.google.gson.Gson;
+import model.Task;
+import services.TaskServices;
+
+import java.io.*;
+import java.net.Socket;
+import java.util.List;
+
+public class ClientHandler implements Runnable {
+    private final Socket socket;
+    private final TaskServices services;
+    private final Gson gson = new Gson();
+
+    public ClientHandler(Socket socket, TaskServices services) {
+        this.socket = socket;
+        this.services = services;
+    }
+
+    @Override
+    public void run() {
+        try (BufferedReader br = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+             BufferedWriter bw = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream()))) {
+
+            String line;
+            while ((line = br.readLine()) != null) {
+                Request req = gson.fromJson(line, Request.class);
+                Response resp = new Response();
+                try {
+                    switch (req.getCommand()) {
+                        case "GET_TASKS":
+                            List<Task> tasks = services.getTasks();
+                            resp.setOk(true);
+                            resp.setData(tasks);
+                            break;
+                        case "CREATE_TASK":
+                            Task t = gson.fromJson(req.getPayload(), Task.class);
+                            services.createTask(t);
+                            resp.setOk(true);
+                            resp.setMessage("Task created");
+                            break;
+                        default:
+                            resp.setOk(false);
+                            resp.setMessage("Command not supported");
+                    }
+                } catch (Exception e) {
+                    resp.setOk(false);
+                    resp.setMessage("Server error: " + e.getMessage());
+                }
+                String out = gson.toJson(resp);
+                bw.write(out + "\n");
+                bw.flush();
+            }
+        } catch (IOException e) {
+            // cliente desconectado o error
+        } finally {
+            try { socket.close(); } catch (IOException ignored) {}
+        }
+    }
+}
+```
+
+### `server/ManagerServer.java`
+```java
+package server;
+
+import db.ConnectionManager;
+import services.TaskServices;
+
+import java.net.ServerSocket;
+import java.net.Socket;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+
+public class ManagerServer {
+    public static void main(String[] args) throws Exception {
+        String jdbcUrl = "jdbc:postgresql://localhost:5432/compunet";
+        String user = "user";
+        String pass = "pass";
+        ConnectionManager cm = new ConnectionManager(jdbcUrl, user, pass);
+
+        // limite concurrente a BD = 5 (ejemplo)
+        TaskServices services = new TaskServices(cm, 5);
+
+        int poolSize = Runtime.getRuntime().availableProcessors() * 2;
+        ExecutorService pool = Executors.newFixedThreadPool(poolSize);
+
+        try (ServerSocket server = new ServerSocket(5000)) {
+            System.out.println("Server listening on 5000");
+            while (true) {
+                Socket client = server.accept();
+                pool.execute(new ClientHandler(client, services));
+            }
+        } finally {
+            pool.shutdown();
+        }
+    }
+}
+```
+
+**Conceptos clave:**
+- `ServerSocket.accept()` bloquea hasta nueva conexión.
+- `ExecutorService` evita crear un hilo por cada conexión, reutiliza hilos.
+- `Semaphore` en `TaskServices` controla concurrencia a la BD.
+
+---
+
+## 6) Cliente ejemplo — `client/SimpleClient.java`
+```java
+package client;
+
+import com.google.gson.Gson;
+import dto.Request;
+import dto.Response;
+import model.Task;
+
+import java.io.*;
+import java.net.Socket;
+import java.util.List;
+
+public class SimpleClient {
+    public static void main(String[] args) throws Exception {
+        try (Socket s = new Socket("127.0.0.1", 5000);
+             BufferedWriter bw = new BufferedWriter(new OutputStreamWriter(s.getOutputStream()));
+             BufferedReader br = new BufferedReader(new InputStreamReader(s.getInputStream()))) {
+
+            Gson gson = new Gson();
+
+            // GET_TASKS
+            Request r = new Request();
+            r.setCommand("GET_TASKS");
+            bw.write(gson.toJson(r) + "\n");
+            bw.flush();
+
+            String line = br.readLine();
+            Response resp = gson.fromJson(line, Response.class);
+            System.out.println("GET_TASKS -> " + gson.toJson(resp));
+
+            // CREATE_TASK (ejemplo)
+            Task t = new Task();
+            t.setTitle("Prueba desde cliente");
+            t.setDescription("Descripción");
+            Request cr = new Request();
+            cr.setCommand("CREATE_TASK");
+            cr.setPayload(gson.toJson(t));
+            bw.write(gson.toJson(cr) + "\n");
+            bw.flush();
+
+            System.out.println("CREATE_TASK enviado");
+        }
+    }
+}
+```
+
+---
+
+## 7) Consideraciones sobre sincronización adicional
+- Usa `synchronized` si compartes estructuras en memoria (p.ej. `Map` de sesiones).
+- Evita bloquear hilos dentro de secciones críticas por mucho tiempo.
+- Usa `volatile` para banderas simples leídas por varios hilos.
+
+---
+
+## 8) Pruebas y despliegue
+1. Crear BD y tablas según el esquema SQL.
+2. Ajustar `dbConcurrencyLimit` y `poolSize` según pruebas de carga.
+3. En producción: usar HikariCP o similar para pool de conexiones en lugar de un `Semaphore` casero.
+4. Considerar TLS sobre sockets si datos son sensibles; alternativamente usar HTTP+TLS y un framework web.
+
+---
+
+## 9) Referencias
+Fragmentos y ejemplos tomados y adaptados del material que me enviaste. fileciteturn2file0
+
+---
+
+Fin del archivo.
+
+
+</details>
+
+<details>
+  <summary>Regalito 5</summary>
+  
+# Compunet — Resumen: Los 5 puntos (descargable)
+Basado en el material original que compartiste. fileciteturn2file0
+
+1) **JDBC (Conexión Java ↔ BD relacional)**
+- Objetivo: ejecutar SQL desde Java.
+- Pasos clave: `DriverManager.getConnection(url,user,pass)`, `PreparedStatement`, `ResultSet`, cerrar recursos.
+- Buenas prácticas: usar pool de conexiones en producción; `PreparedStatement` para evitar inyección.
+
+2) **Sockets TCP**
+- Servidor: `ServerSocket server = new ServerSocket(port); Socket client = server.accept();`
+- Cliente: `Socket s = new Socket(host, port);`
+- Comunicación: `BufferedReader`/`BufferedWriter` con `readLine()`/`write(... + "\n")`.
+- Consejo: manejar I/O en hilos (thread pool) para multiples clientes.
+
+3) **Thread Pools y sincronización**
+- `ExecutorService pool = Executors.newFixedThreadPool(n);`
+- `pool.execute(Runnable)` para delegar trabajo.
+- `synchronized` para proteger recursos compartidos; `volatile` para banderas.
+
+4) **Semáforos**
+- Uso: limitar hilos que acceden a recurso (`Semaphore sem = new Semaphore(permits)`).
+- Métodos: `acquire()` (bloquea hasta permiso) y `release()`.
+- Uso típico: limitar acceso concurrente a BD o controlar turnos en juegos.
+
+5) **Serialización JSON con GSON**
+- `Gson gson = new Gson(); gson.toJson(obj); gson.fromJson(json, Clase.class);`
+- Útil para enviar/recibir objetos por sockets o guardar configuraciones.
+
+--- 
+## Mini-guía de integración
+- Servidor TCP con `ServerSocket` + `ExecutorService`.
+- `ClientHandler` parsea JSON con GSON a `Request`, llama a `TaskServices`.
+- `TaskServices` usa `Semaphore` para limitar operaciones en `TaskDaoDB` (JDBC).
+- Cliente envía `Request` en JSON y recibe `Response` en JSON.
+
+Referencia y ejemplos: material original. fileciteturn2file0
 
 
 </details>
