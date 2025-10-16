@@ -1,3 +1,15 @@
+<details>
+  <summary>Haz clic para ver más</summary>
+  
+  Aquí va el contenido que se muestra cuando se despliega el cuadro. Puedes incluir texto, imágenes o incluso listas.
+
+  - Elemento 1
+  - Elemento 2
+  - Elemento 3
+
+</details>
+
+
 # Transcript — Batalla Naval: ThreadPool, Semaphore, Server/Client (Git-friendly Markdown)
 
 > Export generated: 2025-10-16 04:55:48 (America/Bogota)
