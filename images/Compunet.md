@@ -3476,3 +3476,2499 @@ Referencia y ejemplos: material original. fileciteturn2file0
 
 
 </details>
+
+
+<details>
+  <summary>Alejandro</summary>
+
+TaskManagerV2
+
+----------------------------------------------------------------------------------------------
+task-manager/managerServer/src/main/java/DBConfig/ConnectionManager.java
+
+package DBConfig;
+
+import java.sql.Connection;
+import java.sql.DriverManager;
+
+public class ConnectionManager {
+
+    private String url;
+    private String user;
+    private String password;
+
+    private static ConnectionManager manager;
+
+    public static ConnectionManager getInstance(){
+        if(manager == null){
+            manager = new ConnectionManager();
+        }
+        return manager;
+    }
+
+    public static ConnectionManager getInstance(String url, String user, String password){
+        if(manager == null){
+            manager = new ConnectionManager(url, user, password);
+        }
+        return manager;
+    }
+
+    private ConnectionManager(String url, String user, String password){
+        this.url = url;
+        this.user = user;
+        this.password = password;
+    }
+
+    private ConnectionManager(){
+        this.url = System.getenv("url");
+        this.user = System.getenv("user");
+        this.password = System.getenv("password");
+    }
+
+    public Connection getConnection(){
+        try {
+            Class.forName("org.postgresql.Driver");
+            Connection con = DriverManager.getConnection(url, user, password);
+            return con;
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return null;
+    }
+
+
+    
+}
+
+----------------------------------------------------------------------------------------------
+
+task-manager/managerServer/src/main/java/daos/Dao.java
+
+package daos;
+
+import java.util.List;
+
+public interface Dao<T, P> {
+    public List<T> findAll();
+    public T findById(P id);
+    public T update(T newEntity);
+    public void delete(T entity);
+    public void save(T entity);
+}
+----------------------------------------------------------------------------------------------
+task-manager/managerServer/src/main/java/daos/StageDao.java
+
+package daos;
+
+import java.util.ArrayList;
+import java.util.List;
+
+import model.TaskStage;
+
+public class StageDao implements Dao<TaskStage, Integer>{
+
+    private List<TaskStage> stages = new ArrayList<>();
+    private int count = 0;
+
+    public StageDao(){
+        TaskStage todo = new TaskStage();
+        todo.setName("TO DO");
+        todo.setDescription("Tasks to be done");
+        save(todo);
+
+        TaskStage inProgress = new TaskStage();
+        inProgress.setName("IN PROGRESS");
+        inProgress.setDescription("Tasks in progress");
+        save(inProgress);
+
+        TaskStage done = new TaskStage();
+        done.setName("DONE");
+        done.setDescription("Completed tasks");
+        save(done);
+    }
+
+    @Override
+    public List<TaskStage> findAll() {
+        return stages;
+    }
+
+    @Override
+    public TaskStage findById(Integer id) {
+        return stages.stream()
+            .filter(s -> s.getId() == id)
+            .findFirst().orElse(null);
+    }
+
+    @Override
+    public TaskStage update(TaskStage newEntity) {
+        TaskStage exist = findById(newEntity.getId());
+        if(exist != null){
+            exist.setDescription(newEntity.getDescription());
+            exist.setName(newEntity.getName());
+            exist.setTasks(newEntity.getTasks());
+        }
+        return exist;
+    }
+
+    @Override
+    public void delete(TaskStage entity) {
+        TaskStage ent = findById(entity.getId());
+        if(ent != null){
+            stages.remove(ent);
+        }
+    }
+
+    @Override
+    public void save(TaskStage entity) {
+        entity.setId(++count);
+        stages.add(entity);
+    }
+    
+}
+
+----------------------------------------------------------------------------------------------
+
+task-manager/managerServer/src/main/java/daos/TaskDaoDB.java
+
+package daos;
+
+import java.sql.Connection;
+import java.sql.ResultSet;
+import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.List;
+
+import DBConfig.ConnectionManager;
+import model.Task;
+import model.TaskStage;
+
+public class TaskDaoDB implements Dao<Task, Integer>{
+
+    @Override
+    public List<Task> findAll() {
+        try {
+            List<Task> tasks = new ArrayList<>();
+            Connection conn = ConnectionManager
+            .getInstance(
+).getConnection();
+            String query = "Select * from task";
+
+            Statement statement = conn.createStatement();
+
+            ResultSet result = statement.executeQuery(query);
+
+            while (result.next()) {
+                Task t = new Task();
+                //TODO completar mapeo de las entidades
+                t.setId(result.getInt("id"));
+                t.setTitle(result.getString("title"));
+                t.setDescription(result.getString("description"));
+                int stageID = result.getInt("stage_id");
+                TaskStage stage = new TaskStage();
+                stage.setId(stageID);
+
+                tasks.add(t);
+            }
+
+            conn.close();
+
+            return tasks;
+            
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @Override
+    public Task findById(Integer id) {
+        // TODO Auto-generated method stub
+        throw new UnsupportedOperationException("Unimplemented method 'finById'");
+    }
+
+    @Override
+    public Task update(Task oldEntity) {
+        // TODO Auto-generated method stub
+        throw new UnsupportedOperationException("Unimplemented method 'update'");
+    }
+
+    @Override
+    public void delete(Task entity) {
+        // TODO Auto-generated method stub
+        throw new UnsupportedOperationException("Unimplemented method 'delete'");
+    }
+
+    @Override
+    public void save(Task entity) {
+        // TODO Auto-generated method stub
+        throw new UnsupportedOperationException("Unimplemented method 'save'");
+    }
+    
+}
+----------------------------------------------------------------------------------------------
+
+task-manager/managerServer/src/main/java/daos/TaskMemDao.java
+
+package daos;
+
+import java.util.ArrayList;
+import java.util.List;
+
+import model.Task;
+
+public class TaskMemDao implements Dao<Task, Integer>{
+    private List<Task> tasks = new ArrayList<>();
+
+    private int count = 0;
+
+    @Override
+    public List<Task> findAll() {
+        return tasks;
+    }
+
+    @Override
+    public Task findById(Integer id) {
+        return tasks.stream()
+            .filter(t -> t.getId() == id)
+            .findFirst().orElse(null);
+    }
+
+    @Override
+    public Task update(Task newEntity) {
+        Task exist = findById(newEntity.getId());
+        if(exist != null){
+            exist.setDescription(newEntity.getDescription());
+            exist.setTitle(newEntity.getTitle());
+            exist.setStage(newEntity.getStage());
+            exist.setDueDate(newEntity.getDueDate());
+            exist.setPriority(newEntity.getPriority());
+        }
+        return exist;
+    }
+
+    @Override
+    public void delete(Task entity) {
+        Task ent = findById(entity.getId());
+        if(ent != null){
+            tasks.remove(ent);
+        }
+    }
+
+    public void save(Task entity){
+        entity.setId(++count);
+        tasks.add(entity);
+    }
+    
+}
+
+
+----------------------------------------------------------------------------------------------
+
+task-manager/managerServer/src/main/java/dtos/Request.java
+
+package dtos;
+
+import com.google.gson.JsonObject;
+import com.google.gson.annotations.Expose;
+
+public class Request {
+    @Expose private String command;
+    @Expose private JsonObject data;
+
+    public Request(String command, JsonObject data) {
+        this.command = command;
+        this.data = data;
+    }
+
+    public String getCommand() {
+        return command;
+    }
+    public JsonObject getData() {
+        return data;
+    }
+
+    public void setCommand(String command) {
+        this.command = command;
+    }
+
+    public void setData(JsonObject data) {
+        this.data = data;
+    }
+}
+
+
+
+----------------------------------------------------------------------------------------------
+task-manager/managerServer/src/main/java/model/Task.java
+
+package model;
+
+import com.google.gson.annotations.Expose;
+
+public class Task {
+    @Expose private int id;
+    @Expose private String title;
+    @Expose private String description;
+    @Expose private String dueDate;
+    @Expose private String priority;
+
+    @Expose(serialize = false, deserialize = true)
+    private TaskStage stage;
+
+    public Task(){
+
+    }
+
+    public String getDueDate() {
+        return dueDate;
+    }
+
+    public String getPriority() {
+        return priority;
+    }
+
+    public void setDueDate(String dueDate) {
+        this.dueDate = dueDate;
+    }
+
+    public void setPriority(String priority) {
+        this.priority = priority;
+    }
+
+    public void setId(int id) {
+        this.id = id;
+    }
+    public int getId() {
+        return id;
+    }
+    public void setTitle(String name) {
+        this.title = name;
+    }
+
+    public String getDescription() {
+        return description;
+    }
+
+    public void setDescription(String description) {
+        this.description = description;
+    }
+
+    public TaskStage getStage() {
+        return stage;
+    }
+
+    public void setStage(TaskStage stage) {
+        this.stage = stage;
+    }
+
+    public String getTitle() {
+        return title;
+    }
+
+    @Override
+    public String toString() {
+        return id +" - " +title;
+    }
+
+}
+
+----------------------------------------------------------------------------------------------
+task-manager/managerServer/src/main/java/model/TaskStage.java
+
+package model;
+
+import java.util.ArrayList;
+import java.util.List;
+
+import com.google.gson.annotations.Expose;
+
+public class TaskStage {
+    @Expose private int id;
+    @Expose private String name;
+    @Expose private String description;
+    @Expose private List<Task> tasks;
+
+    public TaskStage(int id, String name, String description) {
+        this.id = id;
+        this.name = name;
+        this.description = description;
+    }
+
+    public TaskStage(){
+
+    }
+
+    public List<Task> getTasks() {
+        if (tasks == null) {
+            tasks = new ArrayList<>();
+        }
+        return tasks;
+    }
+
+    public void setTasks(List<Task> tasks) {
+        this.tasks = tasks;
+    }
+
+    public void setId(int id) {
+        this.id = id;
+    }
+
+    public int getId() {
+        return id;
+    }
+    public String getName() {
+        return name;
+    }
+    public String getDescription() {
+        return description;
+    }
+    public void setName(String name) {
+        this.name = name;
+    }
+    public void setDescription(String description) {
+        this.description = description;
+    }
+    
+}
+----------------------------------------------------------------------------------------------
+
+task-manager/managerServer/src/main/java/model/Task.java
+
+package model;
+
+import com.google.gson.annotations.Expose;
+
+public class Task {
+    @Expose private int id;
+    @Expose private String title;
+    @Expose private String description;
+    @Expose private String dueDate;
+    @Expose private String priority;
+
+    @Expose(serialize = false, deserialize = true)
+    private TaskStage stage;
+
+    public Task(){
+
+    }
+
+    public String getDueDate() {
+        return dueDate;
+    }
+
+    public String getPriority() {
+        return priority;
+    }
+
+    public void setDueDate(String dueDate) {
+        this.dueDate = dueDate;
+    }
+
+    public void setPriority(String priority) {
+        this.priority = priority;
+    }
+
+    public void setId(int id) {
+        this.id = id;
+    }
+    public int getId() {
+        return id;
+    }
+    public void setTitle(String name) {
+        this.title = name;
+    }
+
+    public String getDescription() {
+        return description;
+    }
+
+    public void setDescription(String description) {
+        this.description = description;
+    }
+
+    public TaskStage getStage() {
+        return stage;
+    }
+
+    public void setStage(TaskStage stage) {
+        this.stage = stage;
+    }
+
+    public String getTitle() {
+        return title;
+    }
+
+    @Override
+    public String toString() {
+        return id +" - " +title;
+    }
+
+}
+
+----------------------------------------------------------------------------------------------
+task-manager/managerServer/src/main/java/model/TaskStage.java
+
+package model;
+
+import java.util.ArrayList;
+import java.util.List;
+
+import com.google.gson.annotations.Expose;
+
+public class TaskStage {
+    @Expose private int id;
+    @Expose private String name;
+    @Expose private String description;
+    @Expose private List<Task> tasks;
+
+    public TaskStage(int id, String name, String description) {
+        this.id = id;
+        this.name = name;
+        this.description = description;
+    }
+
+    public TaskStage(){
+
+    }
+
+    public List<Task> getTasks() {
+        if (tasks == null) {
+            tasks = new ArrayList<>();
+        }
+        return tasks;
+    }
+
+    public void setTasks(List<Task> tasks) {
+        this.tasks = tasks;
+    }
+
+    public void setId(int id) {
+        this.id = id;
+    }
+
+    public int getId() {
+        return id;
+    }
+    public String getName() {
+        return name;
+    }
+    public String getDescription() {
+        return description;
+    }
+    public void setName(String name) {
+        this.name = name;
+    }
+    public void setDescription(String description) {
+        this.description = description;
+    }
+    
+}
+----------------------------------------------------------------------------------------------
+
+task-manager/managerServer/src/main/java/services/TaskServices.java
+
+package services;
+
+import java.util.List;
+
+import daos.Dao;
+import daos.StageDao;
+import daos.TaskMemDao;
+import model.Task;
+import model.TaskStage;
+
+public class TaskServices {
+
+    private Dao<Task,Integer> repository;
+    private Dao<TaskStage,Integer> repositoryStage;
+
+    public TaskServices(){
+        repository = new TaskMemDao();
+        repositoryStage = new StageDao();
+    }
+    
+    public Task saveTask(Task t){
+        TaskStage s = repositoryStage.findById(t.getStage().getId());
+        s.getTasks().add(t);
+        t.setStage(s);
+        repository.save(t);
+        return t;
+    }
+
+    public Task changeStage(int taskId, int stageId){
+        Task t = repository.findById(taskId);
+        TaskStage oldStage = t.getStage();
+        oldStage.getTasks().remove(t);
+        TaskStage s = repositoryStage.findById(stageId);
+        s.getTasks().add(t);
+        t.setStage(s);
+        repository.update(t);
+
+        return t;
+    }
+
+    public List<TaskStage> getTask(){
+        return repositoryStage.findAll();
+    }
+}
+
+
+----------------------------------------------------------------------------------------------
+
+
+task-manager/managerServer/src/main/java/ManagerServer.java
+
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.OutputStreamWriter;
+import java.net.ServerSocket;
+import java.net.Socket;
+import java.util.List;
+import java.util.Map;
+
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.google.gson.JsonObject;
+
+import dtos.Request;
+import model.Task;
+import model.TaskStage;
+import services.TaskServices;
+
+public class ManagerServer {
+
+    private Gson gson;
+    private TaskServices services;
+    private boolean running;
+
+    public static void main(String[] args) throws Exception {
+        new ManagerServer();
+    }
+
+    public ManagerServer() throws Exception {
+        gson = new GsonBuilder().excludeFieldsWithoutExposeAnnotation().create();
+        services = new TaskServices();
+        ServerSocket socket = new ServerSocket(5000);
+        running = true;
+        while (running) {
+            Socket sc = socket.accept();
+            resolveClient(sc);
+        }
+        socket.close();
+    }
+
+    public void resolveClient(Socket sc) throws IOException {
+        try {
+            BufferedReader br = new BufferedReader(new InputStreamReader(sc.getInputStream()));
+            BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(sc.getOutputStream()));
+            while (true) {
+                String line = br.readLine();
+                Request rq = gson.fromJson(line, Request.class);
+                JsonObject obj = rq.getData();
+                String resp = null;
+                try {
+                    switch (rq.getCommand()) {
+                        case "CREATE_TASK":
+                            Task t = gson.fromJson(obj, Task.class);
+                            t = services.saveTask(t);
+                            resp = gson.toJson(t);
+                            break;
+                        case "UPDATE_TASK":
+                            String taskId = obj.get("taskId").getAsString();
+                            int stage = obj.get("stage").getAsInt();
+                            t = services.changeStage(Integer.parseInt(taskId), stage);
+                            resp = gson.toJson(t);
+                            break;
+                        case "GET_TASKS":
+                            List<TaskStage> stages = services.getTask();
+                            resp = gson.toJson(stages);
+                            break;
+                        case "HELLO":
+                            Map<String,String> hello = Map.of("message", "Hello from Java server");
+                            resp = gson.toJson(hello);
+                            break;
+                        default:
+                            Map<String,String> error = Map.of("error", "No support operation");
+                            resp = gson.toJson(error);
+                            break;
+                    }
+                } catch (Exception e) {
+                    Map<String,String> error = Map.of("error", e.getMessage());
+                    resp = gson.toJson(error);
+                    e.printStackTrace();
+                }
+                writer.write(resp+"\n");
+                writer.flush();        
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            sc.close();
+        }
+    }
+
+}
+----------------------------------------------------------------------------------------------
+Adicional
+
+task dao db:
+
+package daos;
+
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.List;
+
+import DBConfig.ConnectionManager;
+import model.Task;
+import model.TaskStage;
+
+public class TaskDaoDB implements Dao<Task, Integer> {
+
+    @Override
+    public List<Task> findAll() {
+        try {
+            List<Task> tasks = new ArrayList<>();
+            Connection conn = ConnectionManager.getInstance().getConnection();
+            String query = "SELECT t.id, t.title, t.description, t.stage_id, s.name AS stage_name " +
+                           "FROM task t JOIN task_stage s ON t.stage_id = s.id";
+
+            Statement statement = conn.createStatement();
+            ResultSet result = statement.executeQuery(query);
+
+            while (result.next()) {
+                Task t = new Task();
+                t.setId(result.getInt("id"));
+                t.setTitle(result.getString("title"));
+                t.setDescription(result.getString("description"));
+
+                TaskStage stage = new TaskStage();
+                stage.setId(result.getInt("stage_id"));
+                stage.setName(result.getString("stage_name"));
+                t.setStage(stage);
+
+                tasks.add(t);
+            }
+
+            conn.close();
+            return tasks;
+        } catch (Exception e) {
+            throw new RuntimeException("Error fetching all tasks", e);
+        }
+    }
+
+    @Override
+    public Task findById(Integer id) {
+        try {
+            Connection conn = ConnectionManager.getInstance().getConnection();
+            String query = "SELECT t.id, t.title, t.description, t.stage_id, s.name AS stage_name " +
+                           "FROM task t JOIN task_stage s ON t.stage_id = s.id WHERE t.id = ?";
+
+            PreparedStatement ps = conn.prepareStatement(query);
+            ps.setInt(1, id);
+            ResultSet result = ps.executeQuery();
+
+            Task t = null;
+            if (result.next()) {
+                t = new Task();
+                t.setId(result.getInt("id"));
+                t.setTitle(result.getString("title"));
+                t.setDescription(result.getString("description"));
+
+                TaskStage stage = new TaskStage();
+                stage.setId(result.getInt("stage_id"));
+                stage.setName(result.getString("stage_name"));
+                t.setStage(stage);
+            }
+
+            conn.close();
+            return t;
+        } catch (Exception e) {
+            throw new RuntimeException("Error fetching task by id", e);
+        }
+    }
+
+    @Override
+    public void save(Task entity) {
+        try {
+            Connection conn = ConnectionManager.getInstance().getConnection();
+            String query = "INSERT INTO task (title, description, stage_id) VALUES (?, ?, ?)";
+
+            PreparedStatement ps = conn.prepareStatement(query);
+            ps.setString(1, entity.getTitle());
+            ps.setString(2, entity.getDescription());
+            ps.setInt(3, entity.getStage().getId());
+
+            ps.executeUpdate();
+            conn.close();
+        } catch (Exception e) {
+            throw new RuntimeException("Error saving task", e);
+        }
+    }
+
+    @Override
+    public Task update(Task entity) {
+        try {
+            Connection conn = ConnectionManager.getInstance().getConnection();
+            String query = "UPDATE task SET title = ?, description = ?, stage_id = ? WHERE id = ?";
+
+            PreparedStatement ps = conn.prepareStatement(query);
+            ps.setString(1, entity.getTitle());
+            ps.setString(2, entity.getDescription());
+            ps.setInt(3, entity.getStage().getId());
+            ps.setInt(4, entity.getId());
+
+            ps.executeUpdate();
+            conn.close();
+
+            return entity;
+        } catch (Exception e) {
+            throw new RuntimeException("Error updating task", e);
+        }
+    }
+
+    @Override
+    public void delete(Task entity) {
+        try {
+            Connection conn = ConnectionManager.getInstance().getConnection();
+            String query = "DELETE FROM task WHERE id = ?";
+
+            PreparedStatement ps = conn.prepareStatement(query);
+            ps.setInt(1, entity.getId());
+
+            ps.executeUpdate();
+            conn.close();
+        } catch (Exception e) {
+            throw new RuntimeException("Error deleting task", e);
+        }
+    }
+}
+
+----------------------------------------------------------------------------------------------
+task-manager/web-client/proxy/index.js
+
+const express = require('express');
+const net = require('net');
+const cors = require('cors');
+
+
+const socket = new net.Socket();
+let connected = false;
+
+socket.connect(5000, "127.0.0.1", () => {
+    console.log("Conectado al servidor de Java");
+    const message = {
+        command: "HELLO",
+        data: {}
+    }
+    socket.write(JSON.stringify(message) + "\n")
+    socket.once("data", (data) => {
+        console.log("Respuesta del servidor:", data.toString().trim());
+    });
+    connected = true;
+})
+
+const app = express();
+app.use(cors());
+const port = 3000;
+app.use(express.json());
+
+app.post('/tasks', (req, res) => {
+    const body = req.body
+    const backReq = {
+        command: "CREATE_TASK",
+        data: body
+    }
+    const bodyStr = JSON.stringify(backReq)
+    if(connected){
+        socket.write(bodyStr)
+        socket.write("\n")
+        socket.once("data", (data) => {
+            const message = data.toString().trim();
+            console.log("Respuesta del servidor:", message);
+            try{
+                res.json(JSON.parse(message));
+            }catch(e){
+                res.status(500).json({ error: "Error al procesar la respuesta del servidor" });
+            }
+        });
+    }else{
+        res.status(500).json({ error: "Socket no conectado" });
+    }
+});
+
+app.put('/tasks/:id', (req, res) => {
+    const body = req.body
+    const taskId = req.params.id
+    body.taskId = taskId
+    const backReq = {
+        command: "UPDATE_TASK",
+        data: body
+    }
+    const bodyStr = JSON.stringify(backReq)
+    if(connected){
+        socket.write(bodyStr)
+        socket.write("\n")
+        socket.once("data", (data) => {
+            const message = data.toString().trim();
+            console.log("Respuesta del servidor:", message);
+            try{
+                res.json(JSON.parse(message));
+            }catch(e){
+                res.status(500).json({ error: "Error al procesar la respuesta del servidor" });
+            }
+        });
+    }else{
+        res.status(500).json({ error: "Socket no conectado" });
+    }
+});
+
+app.get('/tasks', (req, res) => {
+    if (connected) {
+        const backReq = {
+            command: "GET_TASKS",
+            data: {}
+        }
+        const bodyStr = JSON.stringify(backReq)
+        // Enviar el comando
+        socket.write(bodyStr);
+        socket.write("\n");
+
+        socket.once("data", (data) => {
+            const message = data.toString().trim();
+            console.log("Respuesta del servidor:", message);
+            try{
+                res.json(JSON.parse(message));
+            }catch(e){
+                res.status(500).json({ error: "Error al procesar la respuesta del servidor" });
+            }  
+        });
+    } else {
+        res.status(500).json({ error: "Socket no conectado" });
+    }
+});
+
+app.listen(port, () => {
+    console.log(`API server running at http://localhost:${port}`);
+});
+----------------------------------------------------------------------------------------------
+task-manager/web-client/src/assets/tasks.js
+
+const tasks =[
+    {
+        "id": 1,
+        "name": "To Do",
+        "description": "Tasks that need to be done",
+        "tasks": [
+            {
+                "id": 1,
+                "title": "Buy groceries",
+                "description": "Milk, Bread, Eggs, Butter",
+                "dueDate": "2023-10-01",
+                "priority": "High"
+            },
+            {
+                "id": 2,
+                "title": "Read a book",
+                "description": "Finish reading 'The Great Gatsby'",
+                "dueDate": "2023-10-05",
+                "priority": "Medium"
+            }
+        ]
+    },
+    {
+        "id": 2,
+        "name": "In Progress",
+        "description": "Tasks that are currently being worked on",
+        "tasks": [
+            {
+                "id": 3,
+                "title": "Develop feature X",
+                "description": "Implement the new feature for the app",
+                "dueDate": "2023-10-10",
+                "priority": "High"
+            }
+        ]
+    },
+    {
+        "id": 3,
+        "name": "Completed",
+        "description": "Tasks that have been completed",
+        "tasks": [
+            {
+                "id": 4,
+                "title": "Morning workout",
+                "description": "30 minutes of cardio and strength training",
+                "dueDate": "2023-09-30",
+                "priority": "Low"
+            }
+        ]
+    }
+]
+
+export default tasks;
+----------------------------------------------------------------------------------------------
+task-manager/web-client/src/components/ListTask.js
+
+import createTaskElement from "./TaskCard.js";
+const updateTask = (taskId, newStage, callback) => {
+    fetch(`http://localhost:3000/tasks/${taskId}`, {
+        method: "PUT",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ stage: newStage })
+    })
+    .then(response => {
+        if (!response.ok) {
+            throw new Error("Server response was not ok");
+        }
+        return response.json()
+    })
+    .then(data => {
+        if (callback ) callback(data);
+    })
+    .catch(error => {
+        console.error("Error updating task:", error);
+        alert("Error updating task: " + error.message);
+        if (callback ) callback(null);
+    });
+}
+
+const ListTask = (list) => {
+    const container = document.createElement("div");
+    container.className = "task-list-container";
+
+    const title = document.createElement("h2")
+    title.innerText = list.name
+    container.appendChild(
+        title
+    )
+    const description = document.createElement("p")
+    description.innerText = list.description
+    container.appendChild(
+        description
+    );
+    const taskContainer = document.createElement("div");
+    taskContainer.className = "task-items";
+    container.appendChild(taskContainer);
+    list.tasks?.forEach(task => {
+        const taskElement = createTaskElement(task);
+        taskContainer.appendChild(taskElement);
+    });
+
+
+    taskContainer.addEventListener("dragover", (e) => {
+        e.preventDefault(); 
+        taskContainer.classList.add("drag-over");
+    });
+
+    taskContainer.addEventListener("dragleave", () => {
+        taskContainer.classList.remove("drag-over");
+    });
+
+    taskContainer.addEventListener("drop", (e) => {
+        e.preventDefault();
+        taskContainer.classList.remove("drag-over");
+
+        const taskId = e.dataTransfer.getData("text/plain");
+        console.log(`Dropped task: ${taskId} to list: ${list.id}`);
+
+        // Aquí podrías mover el elemento visualmente
+        const dragged = document.querySelector(".dragging");
+        const referenceNode =  document.querySelector(".drag-over-sibling");
+        updateTask(taskId, list.id, (updatedTask) => {
+            if (!updatedTask) {
+                if(referenceNode) referenceNode.classList.remove("drag-over-sibling");
+                return;
+            }
+            if (referenceNode && dragged) {
+                referenceNode.after(dragged);
+                referenceNode.classList.remove("drag-over-sibling");
+            } else if (dragged) {
+                taskContainer.appendChild(dragged);
+            }
+        });
+
+        // O actualizar el modelo de datos (list.tasks)
+        // según tu lógica de negocio
+    });
+
+
+    return container;
+}
+
+
+
+export default ListTask;
+
+
+----------------------------------------------------------------------------------------------
+task-manager/web-client/src/components/TaskCard.js
+
+
+
+function createTaskElement(task) {
+    const li = document.createElement("div");
+    li.className = "task-item";
+    li.draggable = true; 
+
+    const title = document.createElement("span");
+    title.textContent = `${task.title}`; 
+
+    const description = document.createElement("span");
+    description.textContent = ` - ${task.description}`;
+
+    const createdAt = document.createElement("span");
+    createdAt.textContent = ` (Due: ${task.dueDate})`;
+
+    const delBtn = document.createElement("button");
+    delBtn.textContent = "Delete";
+    delBtn.onclick = () => {
+        li.remove();
+    };
+
+    li.appendChild(title);
+    li.appendChild(description);
+    li.appendChild(createdAt);
+
+    li.appendChild(delBtn);
+
+    li.addEventListener("dragstart", (e) => {
+        e.dataTransfer.setData("text/plain", task.id); // o JSON.stringify(task)
+        li.classList.add("dragging");
+    });
+
+    li.addEventListener("dragend", () => {
+        li.classList.remove("dragging");
+    });
+
+    li.addEventListener("dragover", (e) => {
+        e.preventDefault(); 
+        li.classList.add("drag-over-sibling");
+    });
+
+    
+    li.addEventListener("dragleave", () => {
+        li.classList.remove("drag-over-sibling");
+    });
+    
+
+    return li;
+}
+
+export default createTaskElement;
+
+----------------------------------------------------------------------------------------------
+task-manager/web-client/src/delegate/taskDelegate.js
+
+
+const getTask = ()=>{
+    
+}
+
+
+----------------------------------------------------------------------------------------------
+task-manager/web-client/src/pages/BoardTask.js
+
+
+import createTaskElement from "../components/TaskCard.js";
+import ListTask from "../components/ListTask.js";
+
+const onAddTask = (e, container, title, description, dueDate) => {
+    const element = {
+        "id": 0,
+        "title": title,
+        "description": description,
+        "dueDate": dueDate,
+        "priority": "High",
+        "stage": {
+            "id": 1
+        }
+    }
+    fetch("http://localhost:3000/tasks", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify(element)
+    })
+    .then(response => {
+        if (!response.ok) {
+            throw new Error("Server response was not ok");
+        }
+        return response.json();
+    })
+    .then(data => {
+        const newTask = createTaskElement(data)
+        container.appendChild(newTask)
+        console.log(data)
+    })
+    .catch(error => {
+        console.error("Error creating task:", error);
+        alert("Error creating task: " + error.message);
+    });
+}
+
+const BoardTask = (tasks) => {
+    const comp = document.createElement("div");
+    comp.className = "board-task";
+    const h1 = document.createElement("h1");
+    h1.textContent = "Task Manager";
+
+    const input = document.createElement("input");
+    input.type = "text";
+    input.id = "task-name"
+    input.placeholder = "Nueva tarea...";
+
+    const description = document.createElement("input");
+    description.type = "text";
+    description.id = "task-description"
+    description.placeholder = "Descripcion...";
+
+    const dueDate = document.createElement("input");
+    dueDate.type = "date";
+    dueDate.id = "task-due-date"
+    dueDate.placeholder = "Due Date...";
+    
+    const lists = document.createElement("div");
+    lists.className = "group-lists";
+
+    const button = document.createElement("button");
+    button.textContent = "Guardar";
+    
+    tasks.forEach(task => {
+        const listElement = ListTask(task);
+        lists.appendChild(listElement);
+    });
+
+    button.onclick = (e) => onAddTask(e, lists.firstElementChild.getElementsByClassName("task-items")[0], input.value, description.value, dueDate.value)
+
+    comp.appendChild(input)
+    comp.appendChild(description)
+    comp.appendChild(dueDate)
+    comp.appendChild(button)
+    comp.appendChild(lists)
+
+    return comp;
+}
+
+
+
+export default BoardTask;
+
+----------------------------------------------------------------------------------------------
+
+task-manager/web-client/src/index.js
+
+import BoardTask from "./pages/BoardTask.js";
+
+const getTasks = () => {
+    return fetch("http://localhost:3000/tasks")
+    .then(response => {
+        if (!response.ok) {
+            throw new Error("Server response was not ok");
+        }
+        return response.json();
+    })
+    .then(data => {
+        return data;
+    })
+    .catch(error => {
+        console.error("Error fetching tasks:", error);
+        alert("Error fetching tasks: " + error.message);
+        return [];
+    });
+}
+
+function renderApp() {
+    const app = document.getElementById("app");
+    const h1 = document.createElement("h1");
+    h1.textContent = "Task Manager";
+    app.appendChild(h1);
+
+    getTasks().then(tasks => {
+        const board = BoardTask(tasks);
+        app.appendChild(board);
+    });
+}
+
+renderApp();
+
+----------------------------------------------------------------------------------------------
+
+task-manager/web-client/app.css
+
+.task-item{
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    align-items: center;
+    background: #fdfdfd;
+    border: 1px solid #ddd;
+    padding: 10px;
+    margin-bottom: 6px;
+    border-radius: 8px;
+    cursor: grab;
+    transition: 'transform 0.2s, box-shadow 0.2s';
+}
+
+.group-lists{
+    display: flex;
+    gap: 16px;
+    padding: 16px;
+    flex-direction: row;
+    width: 80%;
+    align-items: flex-start;
+    
+}
+
+.task-list-container{
+    background-color: #f4f4f4;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 16px;
+    width: 33%;
+    min-height: 300px;
+}
+
+.board-task{
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    font-family: Arial, sans-serif;
+}
+
+input{
+    width: 500px;
+    padding: 8px;
+    margin: 8px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+}
+
+button{
+    padding: 8px;
+    margin: 8px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+}
+
+
+.task-item.dragging {
+  opacity: 0.5;
+  transform: scale(1.05);
+  box-shadow: 0 0 8px rgba(0,0,0,0.3);
+}
+
+.task-items.drag-over {
+  background: #f0f8ff;
+  border: 2px dashed #2196f3;
+  transition: 'background 0.3s';
+}
+
+.task-items{
+    min-height: 200px;
+}
+.drag-over-sibling{
+    border-bottom: 4px dashed #21f39c;
+}
+
+----------------------------------------------------------------------------------------------
+task-manager/web-client/index.html
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="app.css">
+    <title>Document</title>
+</head>
+<body>
+    <div id="app"></div>
+    <script src="src/index.js" type="module"></script>
+</body>
+</html>
+----------------------------------------------------------------------------------------------
+
+task-manager/web-client/package-lock.json
+
+{
+  "name": "web-client",
+  "version": "1.0.0",
+  "lockfileVersion": 3,
+  "requires": true,
+  "packages": {
+    "": {
+      "name": "web-client",
+      "version": "1.0.0",
+      "license": "ISC",
+      "dependencies": {
+        "cors": "^2.8.5",
+        "express": "^5.1.0"
+      }
+    },
+    "node_modules/accepts": {
+      "version": "2.0.0",
+      "resolved": "https://registry.npmjs.org/accepts/-/accepts-2.0.0.tgz",
+      "integrity": "sha512-5cvg6CtKwfgdmVqY1WIiXKc3Q1bkRqGLi+2W/6ao+6Y7gu/RCwRuAhGEzh5B4KlszSuTLgZYuqFqo5bImjNKng==",
+      "license": "MIT",
+      "dependencies": {
+        "mime-types": "^3.0.0",
+        "negotiator": "^1.0.0"
+      },
+      "engines": {
+        "node": ">= 0.6"
+      }
+    },
+    "node_modules/body-parser": {
+      "version": "2.2.0",
+      "resolved": "https://registry.npmjs.org/body-parser/-/body-parser-2.2.0.tgz",
+      "integrity": "sha512-02qvAaxv8tp7fBa/mw1ga98OGm+eCbqzJOKoRt70sLmfEEi+jyBYVTDGfCL/k06/4EMk/z01gCe7HoCH/f2LTg==",
+      "license": "MIT",
+      "dependencies": {
+        "bytes": "^3.1.2",
+        "content-type": "^1.0.5",
+        "debug": "^4.4.0",
+        "http-errors": "^2.0.0",
+        "iconv-lite": "^0.6.3",
+        "on-finished": "^2.4.1",
+        "qs": "^6.14.0",
+        "raw-body": "^3.0.0",
+        "type-is": "^2.0.0"
+      },
+      "engines": {
+        "node": ">=18"
+      }
+    },
+    "node_modules/bytes": {
+      "version": "3.1.2",
+      "resolved": "https://registry.npmjs.org/bytes/-/bytes-3.1.2.tgz",
+      "integrity": "sha512-/Nf7TyzTx6S3yRJObOAV7956r8cr2+Oj8AC5dt8wSP3BQAoeX58NoHyCU8P8zGkNXStjTSi6fzO6F0pBdcYbEg==",
+      "license": "MIT",
+      "engines": {
+        "node": ">= 0.8"
+      }
+    },
+    "node_modules/call-bind-apply-helpers": {
+      "version": "1.0.2",
+      "resolved": "https://registry.npmjs.org/call-bind-apply-helpers/-/call-bind-apply-helpers-1.0.2.tgz",
+      "integrity": "sha512-Sp1ablJ0ivDkSzjcaJdxEunN5/XvksFJ2sMBFfq6x0ryhQV/2b/KwFe21cMpmHtPOSij8K99/wSfoEuTObmuMQ==",
+      "license": "MIT",
+      "dependencies": {
+        "es-errors": "^1.3.0",
+        "function-bind": "^1.1.2"
+      },
+      "engines": {
+        "node": ">= 0.4"
+      }
+    },
+    "node_modules/call-bound": {
+      "version": "1.0.4",
+      "resolved": "https://registry.npmjs.org/call-bound/-/call-bound-1.0.4.tgz",
+      "integrity": "sha512-+ys997U96po4Kx/ABpBCqhA9EuxJaQWDQg7295H4hBphv3IZg0boBKuwYpt4YXp6MZ5AmZQnU/tyMTlRpaSejg==",
+      "license": "MIT",
+      "dependencies": {
+        "call-bind-apply-helpers": "^1.0.2",
+        "get-intrinsic": "^1.3.0"
+      },
+      "engines": {
+        "node": ">= 0.4"
+      },
+      "funding": {
+        "url": "https://github.com/sponsors/ljharb"
+      }
+    },
+    "node_modules/content-disposition": {
+      "version": "1.0.0",
+      "resolved": "https://registry.npmjs.org/content-disposition/-/content-disposition-1.0.0.tgz",
+      "integrity": "sha512-Au9nRL8VNUut/XSzbQA38+M78dzP4D+eqg3gfJHMIHHYa3bg067xj1KxMUWj+VULbiZMowKngFFbKczUrNJ1mg==",
+      "license": "MIT",
+      "dependencies": {
+        "safe-buffer": "5.2.1"
+      },
+      "engines": {
+        "node": ">= 0.6"
+      }
+    },
+    "node_modules/content-type": {
+      "version": "1.0.5",
+      "resolved": "https://registry.npmjs.org/content-type/-/content-type-1.0.5.tgz",
+      "integrity": "sha512-nTjqfcBFEipKdXCv4YDQWCfmcLZKm81ldF0pAopTvyrFGVbcR6P/VAAd5G7N+0tTr8QqiU0tFadD6FK4NtJwOA==",
+      "license": "MIT",
+      "engines": {
+        "node": ">= 0.6"
+      }
+    },
+    "node_modules/cookie": {
+      "version": "0.7.2",
+      "resolved": "https://registry.npmjs.org/cookie/-/cookie-0.7.2.tgz",
+      "integrity": "sha512-yki5XnKuf750l50uGTllt6kKILY4nQ1eNIQatoXEByZ5dWgnKqbnqmTrBE5B4N7lrMJKQ2ytWMiTO2o0v6Ew/w==",
+      "license": "MIT",
+      "engines": {
+        "node": ">= 0.6"
+      }
+    },
+    "node_modules/cookie-signature": {
+      "version": "1.2.2",
+      "resolved": "https://registry.npmjs.org/cookie-signature/-/cookie-signature-1.2.2.tgz",
+      "integrity": "sha512-D76uU73ulSXrD1UXF4KE2TMxVVwhsnCgfAyTg9k8P6KGZjlXKrOLe4dJQKI3Bxi5wjesZoFXJWElNWBjPZMbhg==",
+      "license": "MIT",
+      "engines": {
+        "node": ">=6.6.0"
+      }
+    },
+    "node_modules/cors": {
+      "version": "2.8.5",
+      "resolved": "https://registry.npmjs.org/cors/-/cors-2.8.5.tgz",
+      "integrity": "sha512-KIHbLJqu73RGr/hnbrO9uBeixNGuvSQjul/jdFvS/KFSIH1hWVd1ng7zOHx+YrEfInLG7q4n6GHQ9cDtxv/P6g==",
+      "license": "MIT",
+      "dependencies": {
+        "object-assign": "^4",
+        "vary": "^1"
+      },
+      "engines": {
+        "node": ">= 0.10"
+      }
+    },
+    "node_modules/debug": {
+      "version": "4.4.3",
+      "resolved": "https://registry.npmjs.org/debug/-/debug-4.4.3.tgz",
+      "integrity": "sha512-RGwwWnwQvkVfavKVt22FGLw+xYSdzARwm0ru6DhTVA3umU5hZc28V3kO4stgYryrTlLpuvgI9GiijltAjNbcqA==",
+      "license": "MIT",
+      "dependencies": {
+        "ms": "^2.1.3"
+      },
+      "engines": {
+        "node": ">=6.0"
+      },
+      "peerDependenciesMeta": {
+        "supports-color": {
+          "optional": true
+        }
+      }
+    },
+    "node_modules/depd": {
+      "version": "2.0.0",
+      "resolved": "https://registry.npmjs.org/depd/-/depd-2.0.0.tgz",
+      "integrity": "sha512-g7nH6P6dyDioJogAAGprGpCtVImJhpPk/roCzdb3fIh61/s/nPsfR6onyMwkCAR/OlC3yBC0lESvUoQEAssIrw==",
+      "license": "MIT",
+      "engines": {
+        "node": ">= 0.8"
+      }
+    },
+    "node_modules/dunder-proto": {
+      "version": "1.0.1",
+      "resolved": "https://registry.npmjs.org/dunder-proto/-/dunder-proto-1.0.1.tgz",
+      "integrity": "sha512-KIN/nDJBQRcXw0MLVhZE9iQHmG68qAVIBg9CqmUYjmQIhgij9U5MFvrqkUL5FbtyyzZuOeOt0zdeRe4UY7ct+A==",
+      "license": "MIT",
+      "dependencies": {
+        "call-bind-apply-helpers": "^1.0.1",
+        "es-errors": "^1.3.0",
+        "gopd": "^1.2.0"
+      },
+      "engines": {
+        "node": ">= 0.4"
+      }
+    },
+    "node_modules/ee-first": {
+      "version": "1.1.1",
+      "resolved": "https://registry.npmjs.org/ee-first/-/ee-first-1.1.1.tgz",
+      "integrity": "sha512-WMwm9LhRUo+WUaRN+vRuETqG89IgZphVSNkdFgeb6sS/E4OrDIN7t48CAewSHXc6C8lefD8KKfr5vY61brQlow==",
+      "license": "MIT"
+    },
+    "node_modules/encodeurl": {
+      "version": "2.0.0",
+      "resolved": "https://registry.npmjs.org/encodeurl/-/encodeurl-2.0.0.tgz",
+      "integrity": "sha512-Q0n9HRi4m6JuGIV1eFlmvJB7ZEVxu93IrMyiMsGC0lrMJMWzRgx6WGquyfQgZVb31vhGgXnfmPNNXmxnOkRBrg==",
+      "license": "MIT",
+      "engines": {
+        "node": ">= 0.8"
+      }
+    },
+    "node_modules/es-define-property": {
+      "version": "1.0.1",
+      "resolved": "https://registry.npmjs.org/es-define-property/-/es-define-property-1.0.1.tgz",
+      "integrity": "sha512-e3nRfgfUZ4rNGL232gUgX06QNyyez04KdjFrF+LTRoOXmrOgFKDg4BCdsjW8EnT69eqdYGmRpJwiPVYNrCaW3g==",
+      "license": "MIT",
+      "engines": {
+        "node": ">= 0.4"
+      }
+    },
+    "node_modules/es-errors": {
+      "version": "1.3.0",
+      "resolved": "https://registry.npmjs.org/es-errors/-/es-errors-1.3.0.tgz",
+      "integrity": "sha512-Zf5H2Kxt2xjTvbJvP2ZWLEICxA6j+hAmMzIlypy4xcBg1vKVnx89Wy0GbS+kf5cwCVFFzdCFh2XSCFNULS6csw==",
+      "license": "MIT",
+      "engines": {
+        "node": ">= 0.4"
+      }
+    },
+    "node_modules/es-object-atoms": {
+      "version": "1.1.1",
+      "resolved": "https://registry.npmjs.org/es-object-atoms/-/es-object-atoms-1.1.1.tgz",
+      "integrity": "sha512-FGgH2h8zKNim9ljj7dankFPcICIK9Cp5bm+c2gQSYePhpaG5+esrLODihIorn+Pe6FGJzWhXQotPv73jTaldXA==",
+      "license": "MIT",
+      "dependencies": {
+        "es-errors": "^1.3.0"
+      },
+      "engines": {
+        "node": ">= 0.4"
+      }
+    },
+    "node_modules/escape-html": {
+      "version": "1.0.3",
+      "resolved": "https://registry.npmjs.org/escape-html/-/escape-html-1.0.3.tgz",
+      "integrity": "sha512-NiSupZ4OeuGwr68lGIeym/ksIZMJodUGOSCZ/FSnTxcrekbvqrgdUxlJOMpijaKZVjAJrWrGs/6Jy8OMuyj9ow==",
+      "license": "MIT"
+    },
+    "node_modules/etag": {
+      "version": "1.8.1",
+      "resolved": "https://registry.npmjs.org/etag/-/etag-1.8.1.tgz",
+      "integrity": "sha512-aIL5Fx7mawVa300al2BnEE4iNvo1qETxLrPI/o05L7z6go7fCw1J6EQmbK4FmJ2AS7kgVF/KEZWufBfdClMcPg==",
+      "license": "MIT",
+      "engines": {
+        "node": ">= 0.6"
+      }
+    },
+    "node_modules/express": {
+      "version": "5.1.0",
+      "resolved": "https://registry.npmjs.org/express/-/express-5.1.0.tgz",
+      "integrity": "sha512-DT9ck5YIRU+8GYzzU5kT3eHGA5iL+1Zd0EutOmTE9Dtk+Tvuzd23VBU+ec7HPNSTxXYO55gPV/hq4pSBJDjFpA==",
+      "license": "MIT",
+      "dependencies": {
+        "accepts": "^2.0.0",
+        "body-parser": "^2.2.0",
+        "content-disposition": "^1.0.0",
+        "content-type": "^1.0.5",
+        "cookie": "^0.7.1",
+        "cookie-signature": "^1.2.1",
+        "debug": "^4.4.0",
+        "encodeurl": "^2.0.0",
+        "escape-html": "^1.0.3",
+        "etag": "^1.8.1",
+        "finalhandler": "^2.1.0",
+        "fresh": "^2.0.0",
+        "http-errors": "^2.0.0",
+        "merge-descriptors": "^2.0.0",
+        "mime-types": "^3.0.0",
+        "on-finished": "^2.4.1",
+        "once": "^1.4.0",
+        "parseurl": "^1.3.3",
+        "proxy-addr": "^2.0.7",
+        "qs": "^6.14.0",
+        "range-parser": "^1.2.1",
+        "router": "^2.2.0",
+        "send": "^1.1.0",
+        "serve-static": "^2.2.0",
+        "statuses": "^2.0.1",
+        "type-is": "^2.0.1",
+        "vary": "^1.1.2"
+      },
+      "engines": {
+        "node": ">= 18"
+      },
+      "funding": {
+        "type": "opencollective",
+        "url": "https://opencollective.com/express"
+      }
+    },
+    "node_modules/finalhandler": {
+      "version": "2.1.0",
+      "resolved": "https://registry.npmjs.org/finalhandler/-/finalhandler-2.1.0.tgz",
+      "integrity": "sha512-/t88Ty3d5JWQbWYgaOGCCYfXRwV1+be02WqYYlL6h0lEiUAMPM8o8qKGO01YIkOHzka2up08wvgYD0mDiI+q3Q==",
+      "license": "MIT",
+      "dependencies": {
+        "debug": "^4.4.0",
+        "encodeurl": "^2.0.0",
+        "escape-html": "^1.0.3",
+        "on-finished": "^2.4.1",
+        "parseurl": "^1.3.3",
+        "statuses": "^2.0.1"
+      },
+      "engines": {
+        "node": ">= 0.8"
+      }
+    },
+    "node_modules/forwarded": {
+      "version": "0.2.0",
+      "resolved": "https://registry.npmjs.org/forwarded/-/forwarded-0.2.0.tgz",
+      "integrity": "sha512-buRG0fpBtRHSTCOASe6hD258tEubFoRLb4ZNA6NxMVHNw2gOcwHo9wyablzMzOA5z9xA9L1KNjk/Nt6MT9aYow==",
+      "license": "MIT",
+      "engines": {
+        "node": ">= 0.6"
+      }
+    },
+    "node_modules/fresh": {
+      "version": "2.0.0",
+      "resolved": "https://registry.npmjs.org/fresh/-/fresh-2.0.0.tgz",
+      "integrity": "sha512-Rx/WycZ60HOaqLKAi6cHRKKI7zxWbJ31MhntmtwMoaTeF7XFH9hhBp8vITaMidfljRQ6eYWCKkaTK+ykVJHP2A==",
+      "license": "MIT",
+      "engines": {
+        "node": ">= 0.8"
+      }
+    },
+    "node_modules/function-bind": {
+      "version": "1.1.2",
+      "resolved": "https://registry.npmjs.org/function-bind/-/function-bind-1.1.2.tgz",
+      "integrity": "sha512-7XHNxH7qX9xG5mIwxkhumTox/MIRNcOgDrxWsMt2pAr23WHp6MrRlN7FBSFpCpr+oVO0F744iUgR82nJMfG2SA==",
+      "license": "MIT",
+      "funding": {
+        "url": "https://github.com/sponsors/ljharb"
+      }
+    },
+    "node_modules/get-intrinsic": {
+      "version": "1.3.0",
+      "resolved": "https://registry.npmjs.org/get-intrinsic/-/get-intrinsic-1.3.0.tgz",
+      "integrity": "sha512-9fSjSaos/fRIVIp+xSJlE6lfwhES7LNtKaCBIamHsjr2na1BiABJPo0mOjjz8GJDURarmCPGqaiVg5mfjb98CQ==",
+      "license": "MIT",
+      "dependencies": {
+        "call-bind-apply-helpers": "^1.0.2",
+        "es-define-property": "^1.0.1",
+        "es-errors": "^1.3.0",
+        "es-object-atoms": "^1.1.1",
+        "function-bind": "^1.1.2",
+        "get-proto": "^1.0.1",
+        "gopd": "^1.2.0",
+        "has-symbols": "^1.1.0",
+        "hasown": "^2.0.2",
+        "math-intrinsics": "^1.1.0"
+      },
+      "engines": {
+        "node": ">= 0.4"
+      },
+      "funding": {
+        "url": "https://github.com/sponsors/ljharb"
+      }
+    },
+    "node_modules/get-proto": {
+      "version": "1.0.1",
+      "resolved": "https://registry.npmjs.org/get-proto/-/get-proto-1.0.1.tgz",
+      "integrity": "sha512-sTSfBjoXBp89JvIKIefqw7U2CCebsc74kiY6awiGogKtoSGbgjYE/G/+l9sF3MWFPNc9IcoOC4ODfKHfxFmp0g==",
+      "license": "MIT",
+      "dependencies": {
+        "dunder-proto": "^1.0.1",
+        "es-object-atoms": "^1.0.0"
+      },
+      "engines": {
+        "node": ">= 0.4"
+      }
+    },
+    "node_modules/gopd": {
+      "version": "1.2.0",
+      "resolved": "https://registry.npmjs.org/gopd/-/gopd-1.2.0.tgz",
+      "integrity": "sha512-ZUKRh6/kUFoAiTAtTYPZJ3hw9wNxx+BIBOijnlG9PnrJsCcSjs1wyyD6vJpaYtgnzDrKYRSqf3OO6Rfa93xsRg==",
+      "license": "MIT",
+      "engines": {
+        "node": ">= 0.4"
+      },
+      "funding": {
+        "url": "https://github.com/sponsors/ljharb"
+      }
+    },
+    "node_modules/has-symbols": {
+      "version": "1.1.0",
+      "resolved": "https://registry.npmjs.org/has-symbols/-/has-symbols-1.1.0.tgz",
+      "integrity": "sha512-1cDNdwJ2Jaohmb3sg4OmKaMBwuC48sYni5HUw2DvsC8LjGTLK9h+eb1X6RyuOHe4hT0ULCW68iomhjUoKUqlPQ==",
+      "license": "MIT",
+      "engines": {
+        "node": ">= 0.4"
+      },
+      "funding": {
+        "url": "https://github.com/sponsors/ljharb"
+      }
+    },
+    "node_modules/hasown": {
+      "version": "2.0.2",
+      "resolved": "https://registry.npmjs.org/hasown/-/hasown-2.0.2.tgz",
+      "integrity": "sha512-0hJU9SCPvmMzIBdZFqNPXWa6dqh7WdH0cII9y+CyS8rG3nL48Bclra9HmKhVVUHyPWNH5Y7xDwAB7bfgSjkUMQ==",
+      "license": "MIT",
+      "dependencies": {
+        "function-bind": "^1.1.2"
+      },
+      "engines": {
+        "node": ">= 0.4"
+      }
+    },
+    "node_modules/http-errors": {
+      "version": "2.0.0",
+      "resolved": "https://registry.npmjs.org/http-errors/-/http-errors-2.0.0.tgz",
+      "integrity": "sha512-FtwrG/euBzaEjYeRqOgly7G0qviiXoJWnvEH2Z1plBdXgbyjv34pHTSb9zoeHMyDy33+DWy5Wt9Wo+TURtOYSQ==",
+      "license": "MIT",
+      "dependencies": {
+        "depd": "2.0.0",
+        "inherits": "2.0.4",
+        "setprototypeof": "1.2.0",
+        "statuses": "2.0.1",
+        "toidentifier": "1.0.1"
+      },
+      "engines": {
+        "node": ">= 0.8"
+      }
+    },
+    "node_modules/http-errors/node_modules/statuses": {
+      "version": "2.0.1",
+      "resolved": "https://registry.npmjs.org/statuses/-/statuses-2.0.1.tgz",
+      "integrity": "sha512-RwNA9Z/7PrK06rYLIzFMlaF+l73iwpzsqRIFgbMLbTcLD6cOao82TaWefPXQvB2fOC4AjuYSEndS7N/mTCbkdQ==",
+      "license": "MIT",
+      "engines": {
+        "node": ">= 0.8"
+      }
+    },
+    "node_modules/iconv-lite": {
+      "version": "0.6.3",
+      "resolved": "https://registry.npmjs.org/iconv-lite/-/iconv-lite-0.6.3.tgz",
+      "integrity": "sha512-4fCk79wshMdzMp2rH06qWrJE4iolqLhCUH+OiuIgU++RB0+94NlDL81atO7GX55uUKueo0txHNtvEyI6D7WdMw==",
+      "license": "MIT",
+      "dependencies": {
+        "safer-buffer": ">= 2.1.2 < 3.0.0"
+      },
+      "engines": {
+        "node": ">=0.10.0"
+      }
+    },
+    "node_modules/inherits": {
+      "version": "2.0.4",
+      "resolved": "https://registry.npmjs.org/inherits/-/inherits-2.0.4.tgz",
+      "integrity": "sha512-k/vGaX4/Yla3WzyMCvTQOXYeIHvqOKtnqBduzTHpzpQZzAskKMhZ2K+EnBiSM9zGSoIFeMpXKxa4dYeZIQqewQ==",
+      "license": "ISC"
+    },
+    "node_modules/ipaddr.js": {
+      "version": "1.9.1",
+      "resolved": "https://registry.npmjs.org/ipaddr.js/-/ipaddr.js-1.9.1.tgz",
+      "integrity": "sha512-0KI/607xoxSToH7GjN1FfSbLoU0+btTicjsQSWQlh/hZykN8KpmMf7uYwPW3R+akZ6R/w18ZlXSHBYXiYUPO3g==",
+      "license": "MIT",
+      "engines": {
+        "node": ">= 0.10"
+      }
+    },
+    "node_modules/is-promise": {
+      "version": "4.0.0",
+      "resolved": "https://registry.npmjs.org/is-promise/-/is-promise-4.0.0.tgz",
+      "integrity": "sha512-hvpoI6korhJMnej285dSg6nu1+e6uxs7zG3BYAm5byqDsgJNWwxzM6z6iZiAgQR4TJ30JmBTOwqZUw3WlyH3AQ==",
+      "license": "MIT"
+    },
+    "node_modules/math-intrinsics": {
+      "version": "1.1.0",
+      "resolved": "https://registry.npmjs.org/math-intrinsics/-/math-intrinsics-1.1.0.tgz",
+      "integrity": "sha512-/IXtbwEk5HTPyEwyKX6hGkYXxM9nbj64B+ilVJnC/R6B0pH5G4V3b0pVbL7DBj4tkhBAppbQUlf6F6Xl9LHu1g==",
+      "license": "MIT",
+      "engines": {
+        "node": ">= 0.4"
+      }
+    },
+    "node_modules/media-typer": {
+      "version": "1.1.0",
+      "resolved": "https://registry.npmjs.org/media-typer/-/media-typer-1.1.0.tgz",
+      "integrity": "sha512-aisnrDP4GNe06UcKFnV5bfMNPBUw4jsLGaWwWfnH3v02GnBuXX2MCVn5RbrWo0j3pczUilYblq7fQ7Nw2t5XKw==",
+      "license": "MIT",
+      "engines": {
+        "node": ">= 0.8"
+      }
+    },
+    "node_modules/merge-descriptors": {
+      "version": "2.0.0",
+      "resolved": "https://registry.npmjs.org/merge-descriptors/-/merge-descriptors-2.0.0.tgz",
+      "integrity": "sha512-Snk314V5ayFLhp3fkUREub6WtjBfPdCPY1Ln8/8munuLuiYhsABgBVWsozAG+MWMbVEvcdcpbi9R7ww22l9Q3g==",
+      "license": "MIT",
+      "engines": {
+        "node": ">=18"
+      },
+      "funding": {
+        "url": "https://github.com/sponsors/sindresorhus"
+      }
+    },
+    "node_modules/mime-db": {
+      "version": "1.54.0",
+      "resolved": "https://registry.npmjs.org/mime-db/-/mime-db-1.54.0.tgz",
+      "integrity": "sha512-aU5EJuIN2WDemCcAp2vFBfp/m4EAhWJnUNSSw0ixs7/kXbd6Pg64EmwJkNdFhB8aWt1sH2CTXrLxo/iAGV3oPQ==",
+      "license": "MIT",
+      "engines": {
+        "node": ">= 0.6"
+      }
+    },
+    "node_modules/mime-types": {
+      "version": "3.0.1",
+      "resolved": "https://registry.npmjs.org/mime-types/-/mime-types-3.0.1.tgz",
+      "integrity": "sha512-xRc4oEhT6eaBpU1XF7AjpOFD+xQmXNB5OVKwp4tqCuBpHLS/ZbBDrc07mYTDqVMg6PfxUjjNp85O6Cd2Z/5HWA==",
+      "license": "MIT",
+      "dependencies": {
+        "mime-db": "^1.54.0"
+      },
+      "engines": {
+        "node": ">= 0.6"
+      }
+    },
+    "node_modules/ms": {
+      "version": "2.1.3",
+      "resolved": "https://registry.npmjs.org/ms/-/ms-2.1.3.tgz",
+      "integrity": "sha512-6FlzubTLZG3J2a/NVCAleEhjzq5oxgHyaCU9yYXvcLsvoVaHJq/s5xXI6/XXP6tz7R9xAOtHnSO/tXtF3WRTlA==",
+      "license": "MIT"
+    },
+    "node_modules/negotiator": {
+      "version": "1.0.0",
+      "resolved": "https://registry.npmjs.org/negotiator/-/negotiator-1.0.0.tgz",
+      "integrity": "sha512-8Ofs/AUQh8MaEcrlq5xOX0CQ9ypTF5dl78mjlMNfOK08fzpgTHQRQPBxcPlEtIw0yRpws+Zo/3r+5WRby7u3Gg==",
+      "license": "MIT",
+      "engines": {
+        "node": ">= 0.6"
+      }
+    },
+    "node_modules/object-assign": {
+      "version": "4.1.1",
+      "resolved": "https://registry.npmjs.org/object-assign/-/object-assign-4.1.1.tgz",
+      "integrity": "sha512-rJgTQnkUnH1sFw8yT6VSU3zD3sWmu6sZhIseY8VX+GRu3P6F7Fu+JNDoXfklElbLJSnc3FUQHVe4cU5hj+BcUg==",
+      "license": "MIT",
+      "engines": {
+        "node": ">=0.10.0"
+      }
+    },
+    "node_modules/object-inspect": {
+      "version": "1.13.4",
+      "resolved": "https://registry.npmjs.org/object-inspect/-/object-inspect-1.13.4.tgz",
+      "integrity": "sha512-W67iLl4J2EXEGTbfeHCffrjDfitvLANg0UlX3wFUUSTx92KXRFegMHUVgSqE+wvhAbi4WqjGg9czysTV2Epbew==",
+      "license": "MIT",
+      "engines": {
+        "node": ">= 0.4"
+      },
+      "funding": {
+        "url": "https://github.com/sponsors/ljharb"
+      }
+    },
+    "node_modules/on-finished": {
+      "version": "2.4.1",
+      "resolved": "https://registry.npmjs.org/on-finished/-/on-finished-2.4.1.tgz",
+      "integrity": "sha512-oVlzkg3ENAhCk2zdv7IJwd/QUD4z2RxRwpkcGY8psCVcCYZNq4wYnVWALHM+brtuJjePWiYF/ClmuDr8Ch5+kg==",
+      "license": "MIT",
+      "dependencies": {
+        "ee-first": "1.1.1"
+      },
+      "engines": {
+        "node": ">= 0.8"
+      }
+    },
+    "node_modules/once": {
+      "version": "1.4.0",
+      "resolved": "https://registry.npmjs.org/once/-/once-1.4.0.tgz",
+      "integrity": "sha512-lNaJgI+2Q5URQBkccEKHTQOPaXdUxnZZElQTZY0MFUAuaEqe1E+Nyvgdz/aIyNi6Z9MzO5dv1H8n58/GELp3+w==",
+      "license": "ISC",
+      "dependencies": {
+        "wrappy": "1"
+      }
+    },
+    "node_modules/parseurl": {
+      "version": "1.3.3",
+      "resolved": "https://registry.npmjs.org/parseurl/-/parseurl-1.3.3.tgz",
+      "integrity": "sha512-CiyeOxFT/JZyN5m0z9PfXw4SCBJ6Sygz1Dpl0wqjlhDEGGBP1GnsUVEL0p63hoG1fcj3fHynXi9NYO4nWOL+qQ==",
+      "license": "MIT",
+      "engines": {
+        "node": ">= 0.8"
+      }
+    },
+    "node_modules/path-to-regexp": {
+      "version": "8.3.0",
+      "resolved": "https://registry.npmjs.org/path-to-regexp/-/path-to-regexp-8.3.0.tgz",
+      "integrity": "sha512-7jdwVIRtsP8MYpdXSwOS0YdD0Du+qOoF/AEPIt88PcCFrZCzx41oxku1jD88hZBwbNUIEfpqvuhjFaMAqMTWnA==",
+      "license": "MIT",
+      "funding": {
+        "type": "opencollective",
+        "url": "https://opencollective.com/express"
+      }
+    },
+    "node_modules/proxy-addr": {
+      "version": "2.0.7",
+      "resolved": "https://registry.npmjs.org/proxy-addr/-/proxy-addr-2.0.7.tgz",
+      "integrity": "sha512-llQsMLSUDUPT44jdrU/O37qlnifitDP+ZwrmmZcoSKyLKvtZxpyV0n2/bD/N4tBAAZ/gJEdZU7KMraoK1+XYAg==",
+      "license": "MIT",
+      "dependencies": {
+        "forwarded": "0.2.0",
+        "ipaddr.js": "1.9.1"
+      },
+      "engines": {
+        "node": ">= 0.10"
+      }
+    },
+    "node_modules/qs": {
+      "version": "6.14.0",
+      "resolved": "https://registry.npmjs.org/qs/-/qs-6.14.0.tgz",
+      "integrity": "sha512-YWWTjgABSKcvs/nWBi9PycY/JiPJqOD4JA6o9Sej2AtvSGarXxKC3OQSk4pAarbdQlKAh5D4FCQkJNkW+GAn3w==",
+      "license": "BSD-3-Clause",
+      "dependencies": {
+        "side-channel": "^1.1.0"
+      },
+      "engines": {
+        "node": ">=0.6"
+      },
+      "funding": {
+        "url": "https://github.com/sponsors/ljharb"
+      }
+    },
+    "node_modules/range-parser": {
+      "version": "1.2.1",
+      "resolved": "https://registry.npmjs.org/range-parser/-/range-parser-1.2.1.tgz",
+      "integrity": "sha512-Hrgsx+orqoygnmhFbKaHE6c296J+HTAQXoxEF6gNupROmmGJRoyzfG3ccAveqCBrwr/2yxQ5BVd/GTl5agOwSg==",
+      "license": "MIT",
+      "engines": {
+        "node": ">= 0.6"
+      }
+    },
+    "node_modules/raw-body": {
+      "version": "3.0.1",
+      "resolved": "https://registry.npmjs.org/raw-body/-/raw-body-3.0.1.tgz",
+      "integrity": "sha512-9G8cA+tuMS75+6G/TzW8OtLzmBDMo8p1JRxN5AZ+LAp8uxGA8V8GZm4GQ4/N5QNQEnLmg6SS7wyuSmbKepiKqA==",
+      "license": "MIT",
+      "dependencies": {
+        "bytes": "3.1.2",
+        "http-errors": "2.0.0",
+        "iconv-lite": "0.7.0",
+        "unpipe": "1.0.0"
+      },
+      "engines": {
+        "node": ">= 0.10"
+      }
+    },
+    "node_modules/raw-body/node_modules/iconv-lite": {
+      "version": "0.7.0",
+      "resolved": "https://registry.npmjs.org/iconv-lite/-/iconv-lite-0.7.0.tgz",
+      "integrity": "sha512-cf6L2Ds3h57VVmkZe+Pn+5APsT7FpqJtEhhieDCvrE2MK5Qk9MyffgQyuxQTm6BChfeZNtcOLHp9IcWRVcIcBQ==",
+      "license": "MIT",
+      "dependencies": {
+        "safer-buffer": ">= 2.1.2 < 3.0.0"
+      },
+      "engines": {
+        "node": ">=0.10.0"
+      },
+      "funding": {
+        "type": "opencollective",
+        "url": "https://opencollective.com/express"
+      }
+    },
+    "node_modules/router": {
+      "version": "2.2.0",
+      "resolved": "https://registry.npmjs.org/router/-/router-2.2.0.tgz",
+      "integrity": "sha512-nLTrUKm2UyiL7rlhapu/Zl45FwNgkZGaCpZbIHajDYgwlJCOzLSk+cIPAnsEqV955GjILJnKbdQC1nVPz+gAYQ==",
+      "license": "MIT",
+      "dependencies": {
+        "debug": "^4.4.0",
+        "depd": "^2.0.0",
+        "is-promise": "^4.0.0",
+        "parseurl": "^1.3.3",
+        "path-to-regexp": "^8.0.0"
+      },
+      "engines": {
+        "node": ">= 18"
+      }
+    },
+    "node_modules/safe-buffer": {
+      "version": "5.2.1",
+      "resolved": "https://registry.npmjs.org/safe-buffer/-/safe-buffer-5.2.1.tgz",
+      "integrity": "sha512-rp3So07KcdmmKbGvgaNxQSJr7bGVSVk5S9Eq1F+ppbRo70+YeaDxkw5Dd8NPN+GD6bjnYm2VuPuCXmpuYvmCXQ==",
+      "funding": [
+        {
+          "type": "github",
+          "url": "https://github.com/sponsors/feross"
+        },
+        {
+          "type": "patreon",
+          "url": "https://www.patreon.com/feross"
+        },
+        {
+          "type": "consulting",
+          "url": "https://feross.org/support"
+        }
+      ],
+      "license": "MIT"
+    },
+    "node_modules/safer-buffer": {
+      "version": "2.1.2",
+      "resolved": "https://registry.npmjs.org/safer-buffer/-/safer-buffer-2.1.2.tgz",
+      "integrity": "sha512-YZo3K82SD7Riyi0E1EQPojLz7kpepnSQI9IyPbHHg1XXXevb5dJI7tpyN2ADxGcQbHG7vcyRHk0cbwqcQriUtg==",
+      "license": "MIT"
+    },
+    "node_modules/send": {
+      "version": "1.2.0",
+      "resolved": "https://registry.npmjs.org/send/-/send-1.2.0.tgz",
+      "integrity": "sha512-uaW0WwXKpL9blXE2o0bRhoL2EGXIrZxQ2ZQ4mgcfoBxdFmQold+qWsD2jLrfZ0trjKL6vOw0j//eAwcALFjKSw==",
+      "license": "MIT",
+      "dependencies": {
+        "debug": "^4.3.5",
+        "encodeurl": "^2.0.0",
+        "escape-html": "^1.0.3",
+        "etag": "^1.8.1",
+        "fresh": "^2.0.0",
+        "http-errors": "^2.0.0",
+        "mime-types": "^3.0.1",
+        "ms": "^2.1.3",
+        "on-finished": "^2.4.1",
+        "range-parser": "^1.2.1",
+        "statuses": "^2.0.1"
+      },
+      "engines": {
+        "node": ">= 18"
+      }
+    },
+    "node_modules/serve-static": {
+      "version": "2.2.0",
+      "resolved": "https://registry.npmjs.org/serve-static/-/serve-static-2.2.0.tgz",
+      "integrity": "sha512-61g9pCh0Vnh7IutZjtLGGpTA355+OPn2TyDv/6ivP2h/AdAVX9azsoxmg2/M6nZeQZNYBEwIcsne1mJd9oQItQ==",
+      "license": "MIT",
+      "dependencies": {
+        "encodeurl": "^2.0.0",
+        "escape-html": "^1.0.3",
+        "parseurl": "^1.3.3",
+        "send": "^1.2.0"
+      },
+      "engines": {
+        "node": ">= 18"
+      }
+    },
+    "node_modules/setprototypeof": {
+      "version": "1.2.0",
+      "resolved": "https://registry.npmjs.org/setprototypeof/-/setprototypeof-1.2.0.tgz",
+      "integrity": "sha512-E5LDX7Wrp85Kil5bhZv46j8jOeboKq5JMmYM3gVGdGH8xFpPWXUMsNrlODCrkoxMEeNi/XZIwuRvY4XNwYMJpw==",
+      "license": "ISC"
+    },
+    "node_modules/side-channel": {
+      "version": "1.1.0",
+      "resolved": "https://registry.npmjs.org/side-channel/-/side-channel-1.1.0.tgz",
+      "integrity": "sha512-ZX99e6tRweoUXqR+VBrslhda51Nh5MTQwou5tnUDgbtyM0dBgmhEDtWGP/xbKn6hqfPRHujUNwz5fy/wbbhnpw==",
+      "license": "MIT",
+      "dependencies": {
+        "es-errors": "^1.3.0",
+        "object-inspect": "^1.13.3",
+        "side-channel-list": "^1.0.0",
+        "side-channel-map": "^1.0.1",
+        "side-channel-weakmap": "^1.0.2"
+      },
+      "engines": {
+        "node": ">= 0.4"
+      },
+      "funding": {
+        "url": "https://github.com/sponsors/ljharb"
+      }
+    },
+    "node_modules/side-channel-list": {
+      "version": "1.0.0",
+      "resolved": "https://registry.npmjs.org/side-channel-list/-/side-channel-list-1.0.0.tgz",
+      "integrity": "sha512-FCLHtRD/gnpCiCHEiJLOwdmFP+wzCmDEkc9y7NsYxeF4u7Btsn1ZuwgwJGxImImHicJArLP4R0yX4c2KCrMrTA==",
+      "license": "MIT",
+      "dependencies": {
+        "es-errors": "^1.3.0",
+        "object-inspect": "^1.13.3"
+      },
+      "engines": {
+        "node": ">= 0.4"
+      },
+      "funding": {
+        "url": "https://github.com/sponsors/ljharb"
+      }
+    },
+    "node_modules/side-channel-map": {
+      "version": "1.0.1",
+      "resolved": "https://registry.npmjs.org/side-channel-map/-/side-channel-map-1.0.1.tgz",
+      "integrity": "sha512-VCjCNfgMsby3tTdo02nbjtM/ewra6jPHmpThenkTYh8pG9ucZ/1P8So4u4FGBek/BjpOVsDCMoLA/iuBKIFXRA==",
+      "license": "MIT",
+      "dependencies": {
+        "call-bound": "^1.0.2",
+        "es-errors": "^1.3.0",
+        "get-intrinsic": "^1.2.5",
+        "object-inspect": "^1.13.3"
+      },
+      "engines": {
+        "node": ">= 0.4"
+      },
+      "funding": {
+        "url": "https://github.com/sponsors/ljharb"
+      }
+    },
+    "node_modules/side-channel-weakmap": {
+      "version": "1.0.2",
+      "resolved": "https://registry.npmjs.org/side-channel-weakmap/-/side-channel-weakmap-1.0.2.tgz",
+      "integrity": "sha512-WPS/HvHQTYnHisLo9McqBHOJk2FkHO/tlpvldyrnem4aeQp4hai3gythswg6p01oSoTl58rcpiFAjF2br2Ak2A==",
+      "license": "MIT",
+      "dependencies": {
+        "call-bound": "^1.0.2",
+        "es-errors": "^1.3.0",
+        "get-intrinsic": "^1.2.5",
+        "object-inspect": "^1.13.3",
+        "side-channel-map": "^1.0.1"
+      },
+      "engines": {
+        "node": ">= 0.4"
+      },
+      "funding": {
+        "url": "https://github.com/sponsors/ljharb"
+      }
+    },
+    "node_modules/statuses": {
+      "version": "2.0.2",
+      "resolved": "https://registry.npmjs.org/statuses/-/statuses-2.0.2.tgz",
+      "integrity": "sha512-DvEy55V3DB7uknRo+4iOGT5fP1slR8wQohVdknigZPMpMstaKJQWhwiYBACJE3Ul2pTnATihhBYnRhZQHGBiRw==",
+      "license": "MIT",
+      "engines": {
+        "node": ">= 0.8"
+      }
+    },
+    "node_modules/toidentifier": {
+      "version": "1.0.1",
+      "resolved": "https://registry.npmjs.org/toidentifier/-/toidentifier-1.0.1.tgz",
+      "integrity": "sha512-o5sSPKEkg/DIQNmH43V0/uerLrpzVedkUh8tGNvaeXpfpuwjKenlSox/2O/BTlZUtEe+JG7s5YhEz608PlAHRA==",
+      "license": "MIT",
+      "engines": {
+        "node": ">=0.6"
+      }
+    },
+    "node_modules/type-is": {
+      "version": "2.0.1",
+      "resolved": "https://registry.npmjs.org/type-is/-/type-is-2.0.1.tgz",
+      "integrity": "sha512-OZs6gsjF4vMp32qrCbiVSkrFmXtG/AZhY3t0iAMrMBiAZyV9oALtXO8hsrHbMXF9x6L3grlFuwW2oAz7cav+Gw==",
+      "license": "MIT",
+      "dependencies": {
+        "content-type": "^1.0.5",
+        "media-typer": "^1.1.0",
+        "mime-types": "^3.0.0"
+      },
+      "engines": {
+        "node": ">= 0.6"
+      }
+    },
+    "node_modules/unpipe": {
+      "version": "1.0.0",
+      "resolved": "https://registry.npmjs.org/unpipe/-/unpipe-1.0.0.tgz",
+      "integrity": "sha512-pjy2bYhSsufwWlKwPc+l3cN7+wuJlK6uz0YdJEOlQDbl6jo/YlPi4mb8agUkVC8BF7V8NuzeyPNqRksA3hztKQ==",
+      "license": "MIT",
+      "engines": {
+        "node": ">= 0.8"
+      }
+    },
+    "node_modules/vary": {
+      "version": "1.1.2",
+      "resolved": "https://registry.npmjs.org/vary/-/vary-1.1.2.tgz",
+      "integrity": "sha512-BNGbWLfd0eUPabhkXUVm0j8uuvREyTh5ovRa/dyow/BqAbZJyC+5fU+IzQOzmAKzYqYRAISoRhdQr3eIZ/PXqg==",
+      "license": "MIT",
+      "engines": {
+        "node": ">= 0.8"
+      }
+    },
+    "node_modules/wrappy": {
+      "version": "1.0.2",
+      "resolved": "https://registry.npmjs.org/wrappy/-/wrappy-1.0.2.tgz",
+      "integrity": "sha512-l4Sp/DRseor9wL6EvV2+TuQn63dMkPjZ/sp9XkghTEbV9KlPS1xUsZ3u7/IQO4wxtcFB4bgpQPRcR3QCvezPcQ==",
+      "license": "ISC"
+    }
+  }
+}
+----------------------------------------------------------------------------------------------
+
+task-manager/web-client/package.json
+
+{
+  "name": "web-client",
+  "version": "1.0.0",
+  "description": "Task-manager",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "AMB",
+  "license": "ISC",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^5.1.0"
+  }
+}
+----------------------------------------------------------------------------------------------
+
+task-manager/ReadMe.md
+
+
+# Taller: Servidor de Gestión de Tareas con ServerSocket
+
+## Objetivo
+Desarrollar un **servidor TCP** en Java utilizando `ServerSocket` que gestione tareas mediante un protocolo de mensajes en formato **JSON**.  
+El servidor debe aplicar el **patrón DAO** para el manejo de los datos (en memoria o con JDBC).
+
+---
+
+## Descripción general
+
+El propósito de este taller es que el estudiante implemente un servidor básico que reciba solicitudes de un cliente (por ejemplo, un cliente en Node.js o en consola) a través de **sockets TCP**.  
+
+Cada solicitud corresponde a una **acción sobre tareas**, como crear, actualizar o listar.
+
+Los datos se almacenarán mediante un **DAO**, el cual puede tener una implementación:
+
+- **En memoria** (mínimo requerido)
+- **Con JDBC y PostgreSQL** (puntuación extra)
+
+---
+
+## Protocolo de comunicación
+
+El servidor recibirá mensajes en formato JSON **por línea** (`\n` al final).  
+Cada mensaje contiene un comando y una estructura de datos asociada.
+
+## Estructura de los mensajes y entidades
+
+El servidor y el cliente se comunican **mediante mensajes JSON**.  
+Cada mensaje tiene dos campos principales:
+- `command`: indica la acción que el servidor debe ejecutar.
+- `data`: contiene los datos necesarios para la operación.
+
+
+### Ejemplos de mensajes
+
+####  **Crear una tarea**
+```json
+{
+  "command": "CREATE_TASK",
+  "data": {
+    "id": 0,
+    "title": "Buy groceries",
+    "description": "Milk, Bread, Eggs, Butter",
+    "dueDate": "2023-10-01",
+    "priority": "High"
+  }
+}
+```
+#### **Actualizar el estado o etapa de una tarea**
+
+```json
+{
+  "command": "UPDATE_TASK",
+  "data": {
+    "stage": 2,
+    "taskId": "1"
+  }
+}
+```
+
+#### **Obtener todas las tareas y etapas**
+
+```json
+{
+  "command": "GET_TASKS",
+  "data": {}
+}
+
+```
+
+El servidor debe responder con la tarea creada en formato Json. Use gson para serializar los objetos.
+
+---
+
+###  Entidades principales
+
+#### TaskStage (Etapa o lista de tareas)
+Representa una agrupación de tareas, como "To Do", "In Progress" o "Done".
+
+```json
+{
+  "id": 1,
+  "name": "To Do",
+  "description": "Tasks that need to be done",
+  "tasks": [
+    {
+      "id": 1,
+      "title": "Buy groceries",
+      "description": "Milk, Bread, Eggs, Butter",
+      "dueDate": "2023-10-01",
+      "priority": "High"
+    },
+    {
+      "id": 2,
+      "title": "Read a book",
+      "description": "Finish reading 'The Great Gatsby'",
+      "dueDate": "2023-10-05",
+      "priority": "Medium"
+    }
+  ]
+}
+```
+
+**Task (Tarea individual)**
+
+Representa una tarea que pertenece a una etapa específica.
+```json
+{
+  "id": 1,
+  "title": "Buy groceries",
+  "description": "Milk, Bread, Eggs, Butter",
+  "dueDate": "2023-10-01",
+  "priority": "High"
+}
+
+```
+
+## Ejecución de la aplicación
+
+Para validar el funcionamiento de servidor tcp, se ha dejado la implementación de un cliente web para revisar las interacciones con el servicio. Para ejecutar estos elementos siga los siguientes pasos:
+
+### Verificar herramientas
+
+Para este la ejecución del proyecto se requiere **nodejs**, un **servidor web** (puede ser el Live Preview de vscode) y **java** instalado en la máquina.
+
+### Instalación de dependencias.
+
+```bash
+cd web-client
+npm install
+```
+
+### Ejecución del proxy web
+
+dentro de la carpeta **web-client**
+
+```bash
+node proxy/index.js
+```
+
+### Ejecución del Servidor TCP.
+
+Puede ejecutarlo desde el editor ó usando la CLI
+
+```bash
+java -jar managerServer/build/libs/managerServer.jar
+```
+
+### Visualización de la página.
+
+Abrir el archivo **index.html** con el Servidor web instalado. Si usa **Live Preview** abra el archivo en vscode y en la parte superior derecha puede pre visualizarlo. Copie la URL a un  navegador para mayor comodidad. 
+
+> **Importante:**  
+> 1. El servidor TCP debe exponer el puerto **5000** por la interface de red **localhost**
+> 2. Este taller está diseñado para fortalecer habilidades en programación de redes, manejo de JSON y aplicación de patrones de diseño como DAO.  
+> 3. Se recomienda seguir buenas prácticas de organización de código y documentación para facilitar la comprensión y mantenimiento del proyecto.
+
+
+## Estado inicial.
+
+La aplicación debe contar con tres TaskStage por defecto:
+
+```java
+
+  TaskStage s = new TaskStage();
+  s.setId(1);
+  s.setName("TO DO");
+  s.setDescription("Desc");
+
+  TaskStage s1 = new TaskStage();
+  s1.setId(2);
+  s1.setName("Doing");
+  s1.setDescription("Desc");
+
+  TaskStage s2 = new TaskStage();
+  s2.setId(3);
+  s2.setName("Done");
+  s2.setDescription("Desc");
+  
+```
+----------------------------------------------------------------------------------------------
+
+
+</details>
+
